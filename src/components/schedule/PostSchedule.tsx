@@ -1,12 +1,14 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Calendar, Clock, Target, FileText, Zap, 
   Settings, Save, Plus, Globe, Tag, Hash
 } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
+import { useAuth } from '../../contexts/AuthContext'
 
 const PostSchedule: React.FC = () => {
+  const { connectedSites } = useAuth()
   const [scheduleType, setScheduleType] = useState('topic')
   const [frequency, setFrequency] = useState('daily')
   const [wordCount, setWordCount] = useState('1000')
@@ -35,11 +37,6 @@ const PostSchedule: React.FC = () => {
     { id: '1000', name: '1000 words', cost: 10 },
     { id: '1500', name: '1500 words', cost: 15 },
     { id: '2000', name: '2000 words', cost: 20 },
-  ]
-
-  const sites = [
-    { id: '1', name: 'My Blog', url: 'https://myblog.com' },
-    { id: '2', name: 'Tech Blog', url: 'https://techblog.com' },
   ]
 
   const calculateCost = () => {
@@ -102,7 +99,6 @@ const PostSchedule: React.FC = () => {
                       >
                         <div className="flex items-center space-x-3 mb-2">
                           <type.icon className={`w-5 h-5 ${
-                            scheduleType === type.id ? 'text-blue-600' : 'text-gray-400'
                             scheduleType === type.id ? 'text-teal-600' : 'text-gray-400'
                           }`} />
                           <span className="font-medium text-gray-800">{type.name}</span>
@@ -236,12 +232,17 @@ const PostSchedule: React.FC = () => {
                         required
                       >
                         <option value="">Select a site</option>
-                        {sites.map((site) => (
+                        {connectedSites.map((site) => (
                           <option key={site.id} value={site.id}>
                             {site.name} ({site.url})
                           </option>
                         ))}
                       </select>
+                      {connectedSites.length === 0 && (
+                        <p className="text-sm text-amber-600 mt-1">
+                          No WordPress sites connected. Please add a site in Settings first.
+                        </p>
+                      )}
                     </div>
 
                     <div>

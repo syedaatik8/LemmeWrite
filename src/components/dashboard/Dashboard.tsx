@@ -7,15 +7,11 @@ import {
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../layout/DashboardLayout'
+import { useAuth } from '../../contexts/AuthContext'
 
 const Dashboard: React.FC = () => {
+  const { connectedSites } = useAuth()
   const [showPopup, setShowPopup] = useState(false)
-  
-  // Mock data - in real app, this would come from your API
-  const [connectedSites] = useState([
-    { id: '1', name: 'My Blog', url: 'https://myblog.com', status: 'connected' },
-    // { id: '2', name: 'Tech Blog', url: 'https://techblog.com', status: 'disconnected' }
-  ])
   
   const [blogStats] = useState({
     totalBlogs: 47,
