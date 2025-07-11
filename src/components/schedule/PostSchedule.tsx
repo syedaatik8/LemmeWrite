@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
-import { scheduleService, PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
+import { scheduleService, PostSchedule as PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
 
 const PostSchedule: React.FC = () => {
   const { connectedSites } = useAuth()
@@ -162,7 +162,13 @@ const PostSchedule: React.FC = () => {
         throw createError
       }
 
-      setSuccess('Blog post created and queued for immediate publishing! It will be published to your WordPress site shortly.')
+      if (data?.status === 'published') {
+        setSuccess(`Blog post "${data.title}" has been successfully published to your WordPress site!`)
+      } else if (data?.status === 'failed') {
+        setError(`Failed to publish blog post: ${data.error_message || 'Unknown error occurred'}`)
+      } else {
+        setSuccess('Blog post created and queued for publishing! It will be published to your WordPress site shortly.')
+      }
       
       // Reset form
       setTopic('')

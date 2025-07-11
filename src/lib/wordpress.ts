@@ -30,6 +30,8 @@ interface WordPressResponse {
 class WordPressService {
   async publishPost(site: WordPressSite, post: WordPressPost): Promise<WordPressResponse> {
     try {
+      console.log('Publishing to WordPress:', { site: site.name, title: post.title })
+      
       const auth = btoa(`${site.username}:${site.password}`)
       const apiUrl = `${site.url.replace(/\/$/, '')}/wp-json/wp/v2/posts`
 
@@ -44,15 +46,19 @@ class WordPressService {
         status: post.status,
         categories: categoryIds,
         tags: tagIds,
-        meta: {
-          _yoast_wpseo_metadesc: post.metaDescription || post.excerpt
-        }
+        ...(post.metaDescription && {
+          meta: {
+            _yoast_wpseo_metadesc: post.metaDescription
+          }
+        })
       }
 
       // If scheduled, add date
       if (post.status === 'future' && post.scheduledDate) {
         postData.date = post.scheduledDate
       }
+
+      console.log('Sending post data to WordPress:', postData)
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -65,10 +71,12 @@ class WordPressService {
 
       if (!response.ok) {
         const errorData = await response.json()
+        console.error('WordPress API error:', errorData)
         throw new Error(errorData.message || `HTTP ${response.status}`)
       }
 
       const result = await response.json()
+      console.log('WordPress publish success:', { id: result.id, link: result.link })
       
       return {
         success: true,
@@ -86,6 +94,7 @@ class WordPressService {
 
   async testConnection(site: WordPressSite): Promise<boolean> {
     try {
+      console.log('Testing WordPress connection:', site.name)
       const auth = btoa(`${site.username}:${site.password}`)
       const apiUrl = `${site.url.replace(/\/$/, '')}/wp-json/wp/v2/users/me`
 
@@ -95,8 +104,10 @@ class WordPressService {
         }
       })
 
+      console.log('WordPress connection test result:', response.ok)
       return response.ok
     } catch {
+      console.log('WordPress connection test failed')
       return false
     }
   }
