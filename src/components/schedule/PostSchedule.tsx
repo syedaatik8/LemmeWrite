@@ -7,9 +7,11 @@ import {
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
 import { scheduleService, PostSchedule as PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
+import { supabase } from '../../lib/supabase'
 
 const PostSchedule: React.FC = () => {
   const { connectedSites } = useAuth()
+  const [userPoints, setUserPoints] = useState(1250)
   const [scheduleType, setScheduleType] = useState('topic')
   const [frequency, setFrequency] = useState('daily')
   const [wordCount, setWordCount] = useState('1000')
@@ -23,6 +25,39 @@ const PostSchedule: React.FC = () => {
   const [isPostingNow, setIsPostingNow] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+  // Load user points on component mount
+  useEffect(() => {
+    loadUserPoints()
+  }, [])
+
+  const loadUserPoints = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Get posts created this month to calculate points used
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      
+      const { data: postsData, error } = await supabase
+        .from('scheduled_posts')
+        .select('id, created_at')
+        .eq('user_id', user.id)
+        .gte('created_at', startOfMonth.toISOString())
+
+      if (error) throw error
+
+      // Calculate points used (15 points per post)
+      const postsThisMonth = postsData?.length || 0
+      const pointsUsed = postsThisMonth * 15
+      const remainingPoints = Math.max(1250 - pointsUsed, 0)
+      
+      setUserPoints(remainingPoints)
+    } catch (error) {
+      console.error('Error loading user points:', error)
+    }
+  }
 
   const scheduleTypes = [
     { id: 'topic', name: 'Topic-Based', icon: Target, description: 'Generate posts based on specific topics' },
@@ -499,9 +534,9 @@ const PostSchedule: React.FC = () => {
                   <h3 className="font-semibold text-gray-800">Available Points</h3>
                   <Zap className="w-5 h-5 text-teal-600" />
                 </div>
-                <div className="text-3xl font-bold text-teal-600 mb-2">1,250</div>
+                <div className="text-3xl font-bold text-teal-600 mb-2">{userPoints.toLocaleString()}</div>
                 <div className="text-sm text-gray-600 mb-4">
-                  Enough for {Math.floor(1250 / calculateCost())} posts
+                  Enough for {Math.floor(userPoints / calculateCost())} posts
                 </div>
                 <button className="w-full bg-teal-600 text-white py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm">
                   Upgrade Plan

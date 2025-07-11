@@ -8,19 +8,70 @@ import {
 import { Link } from 'react-router-dom'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../lib/supabase'
 
 const Dashboard: React.FC = () => {
-  const { connectedSites } = useAuth()
+  const { connectedSites, user } = useAuth()
   const [showPopup, setShowPopup] = useState(false)
+  const [userPoints, setUserPoints] = useState(1250) // Default value
+  const [postsThisMonth, setPostsThisMonth] = useState(0)
+  const [scheduledPosts, setScheduledPosts] = useState(0)
+  const [draftPosts, setDraftPosts] = useState(0)
   
-  const [blogStats] = useState({
-    totalBlogs: 47,
-    thisMonth: 12,
-    scheduled: 8,
-    drafts: 3,
+  // Load user stats on component mount
+  React.useEffect(() => {
+    if (user) {
+      loadUserStats()
+    }
+  }, [user])
+
+  const loadUserStats = async () => {
+    try {
+      // Get scheduled posts count
+      const { data: scheduledData, error: scheduledError } = await supabase
+        .from('scheduled_posts')
+        .select('id, status, created_at')
+        .eq('user_id', user?.id)
+
+      if (scheduledError) throw scheduledError
+
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      
+      const thisMonthPosts = scheduledData?.filter(post => 
+        new Date(post.created_at) >= startOfMonth
+      ).length || 0
+      
+      const pendingPosts = scheduledData?.filter(post => 
+        post.status === 'pending'
+      ).length || 0
+      
+      const draftPostsCount = scheduledData?.filter(post => 
+        post.status === 'draft'
+      ).length || 0
+
+      setPostsThisMonth(thisMonthPosts)
+      setScheduledPosts(pendingPosts)
+      setDraftPosts(draftPostsCount)
+
+      // Calculate points used this month (assuming 15 points per post)
+      const pointsUsed = thisMonthPosts * 15
+      const remainingPoints = Math.max(1250 - pointsUsed, 0)
+      setUserPoints(remainingPoints)
+
+    } catch (error) {
+      console.error('Error loading user stats:', error)
+    }
+  }
+
+  const blogStats = {
+    totalBlogs: postsThisMonth + 35, // Add some base number for demo
+    thisMonth: postsThisMonth,
+    scheduled: scheduledPosts,
+    drafts: draftPosts,
     avgWordsPerPost: 1250,
-    totalWords: 58750
-  })
+    totalWords: (postsThisMonth + 35) * 1250
+  }
 
   const stats = [
     { title: 'Total Blogs Posted', value: blogStats.totalBlogs.toString(), change: `+${blogStats.thisMonth} this month`, icon: FileText, color: 'bg-teal-600' },

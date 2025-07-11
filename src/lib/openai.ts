@@ -25,8 +25,13 @@ class OpenAIService {
 
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
-    console.log('OpenAI API Key configured:', this.apiKey ? 'Yes' : 'No')
-    console.log('API Key length:', this.apiKey?.length || 0)
+    if (!this.apiKey || this.apiKey.trim() === '') {
+      console.error('CRITICAL: OpenAI API key is missing or empty!')
+      console.error('Please check your .env file and ensure VITE_OPENAI_API_KEY is set correctly')
+    } else {
+      console.log('OpenAI API Key configured successfully')
+      console.log('API Key prefix:', this.apiKey.substring(0, 20) + '...')
+    }
   }
 
   async generateBlogPost(request: BlogGenerationRequest): Promise<BlogGenerationResponse> {
@@ -36,8 +41,10 @@ class OpenAIService {
 
     // Check if API key is available
     if (!this.apiKey || this.apiKey.trim() === '') {
-      console.warn('OpenAI API key is missing. Using fallback content generation.')
-      return this.generateFallbackContent(request)
+      console.error('CRITICAL ERROR: OpenAI API key is missing!')
+      console.error('Cannot generate blog content without API key.')
+      console.error('Please add your OpenAI API key to the .env file as VITE_OPENAI_API_KEY')
+      throw new Error('OpenAI API key is required but not configured. Please check your environment variables.')
     }
 
     const prompt = this.buildPrompt(request)
@@ -47,7 +54,7 @@ class OpenAIService {
       console.log('Making OpenAI API request...')
       
       const requestBody = {
-        model: 'gpt-4o-mini',
+        model: 'gpt-4',
         messages: [
           {
             role: 'system',
@@ -60,7 +67,6 @@ class OpenAIService {
         ],
         max_tokens: this.calculateMaxTokens(request.wordCount),
         temperature: 0.7,
-        response_format: { type: 'json_object' }
       }
 
       console.log('Request body:', JSON.stringify(requestBody, null, 2))
@@ -80,6 +86,19 @@ class OpenAIService {
       if (!response.ok) {
         const errorText = await response.text()
         console.error('OpenAI API Error Response:', errorText)
+        
+        // Try to parse error for better handling
+        try {
+          const errorData = JSON.parse(errorText)
+          if (errorData.error?.code === 'insufficient_quota') {
+            throw new Error('OpenAI API quota exceeded. Please check your OpenAI account billing.')
+          } else if (errorData.error?.code === 'invalid_api_key') {
+            throw new Error('Invalid OpenAI API key. Please check your API key configuration.')
+          }
+        } catch (parseError) {
+          // If we can't parse the error, use the original
+        }
+        
         throw new Error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`)
       }
 
@@ -90,8 +109,16 @@ class OpenAIService {
         throw new Error('Invalid response format from OpenAI')
       }
 
-      const content = JSON.parse(data.choices[0].message.content)
-      console.log('Parsed content:', content)
+      // Parse the response content
+      let content
+      try {
+        // Try to parse as JSON first
+        content = JSON.parse(data.choices[0].message.content)
+      } catch (parseError) {
+        // If not JSON, treat as plain text and structure it
+        const textContent = data.choices[0].message.content
+        content = this.parseTextResponse(textContent, request)
+      }
       
       const result = this.validateAndFormatResponse(content)
       console.log('=== OpenAI Blog Generation Completed Successfully ===')
@@ -103,12 +130,56 @@ class OpenAIService {
       
       if (error instanceof Error) {
         console.error('Error message:', error.message)
-        console.error('Error stack:', error.stack)
+        
+        // Don't fall back to template content - throw the actual error
+        if (error.message.includes('API key') || error.message.includes('quota') || error.message.includes('billing')) {
+          throw error
+        }
       }
       
-      console.warn('Falling back to template content generation')
-      return this.generateFallbackContent(request)
+      // Only fall back for network errors, not API key issues
+      console.error('OpenAI API call failed, throwing error instead of using fallback')
+      throw new Error(`Failed to generate content: ${error.message}`)
     }
+  }
+
+  private parseTextResponse(textContent: string, request: BlogGenerationRequest): any {
+    // Extract title (first line or H1)
+    const lines = textContent.split('\n').filter(line => line.trim())
+    const title = lines[0]?.replace(/^#\s*/, '') || `${this.capitalizeWords(request.content)}: A Comprehensive Guide`
+    
+    // Convert to HTML
+    const htmlContent = this.convertTextToHtml(textContent)
+    
+    // Generate excerpt from first paragraph
+    const firstParagraph = lines.find(line => line.length > 50 && !line.startsWith('#'))
+    const excerpt = firstParagraph?.substring(0, 150) + '...' || `Learn about ${request.content} in this comprehensive guide.`
+    
+    return {
+      title,
+      content: htmlContent,
+      excerpt,
+      tags: [request.content.toLowerCase().replace(/\s+/g, '-'), 'guide', 'tips'],
+      metaDescription: excerpt,
+      seoKeywords: [request.content, `${request.content} guide`, `${request.content} tips`]
+    }
+  }
+
+  private convertTextToHtml(text: string): string {
+    return text
+      .split('\n')
+      .map(line => {
+        line = line.trim()
+        if (!line) return ''
+        if (line.startsWith('# ')) return `<h1>${line.substring(2)}</h1>`
+        if (line.startsWith('## ')) return `<h2>${line.substring(3)}</h2>`
+        if (line.startsWith('### ')) return `<h3>${line.substring(4)}</h3>`
+        if (line.startsWith('- ')) return `<li>${line.substring(2)}</li>`
+        return `<p>${line}</p>`
+      })
+      .join('\n')
+      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+      .replace(/<\/li>\n?<li>/g, '</li><li>')
   }
 
   private generateFallbackContent(request: BlogGenerationRequest): BlogGenerationResponse {
