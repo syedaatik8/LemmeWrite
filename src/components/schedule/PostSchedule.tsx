@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Calendar, Clock, Target, FileText, Zap, 
-  Settings, Save, Plus, Globe, Tag, Hash
+  Settings, Save, Plus, Globe, Tag, Hash, CheckCircle
 } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
+import { scheduleService, PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
 
 const PostSchedule: React.FC = () => {
   const { connectedSites } = useAuth()
@@ -18,6 +19,10 @@ const PostSchedule: React.FC = () => {
   const [keywords, setKeywords] = useState('')
   const [description, setDescription] = useState('')
   const [publishTime, setPublishTime] = useState('09:00')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isPostingNow, setIsPostingNow] = useState(false)
+  const [success, setSuccess] = useState('')
+  const [error, setError] = useState('')
 
   const scheduleTypes = [
     { id: 'topic', name: 'Topic-Based', icon: Target, description: 'Generate posts based on specific topics' },
@@ -45,20 +50,136 @@ const PostSchedule: React.FC = () => {
     return freqCost + wordCost
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCreateSchedule = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Handle schedule creation
-    console.log('Creating schedule...', {
-      scheduleType,
-      frequency,
-      wordCount,
-      selectedSite,
-      topic,
-      categories,
-      keywords,
-      description,
-      publishTime
-    })
+    
+    if (!selectedSite) {
+      setError('Please select a WordPress site')
+      return
+    }
+
+    let contentInput = ''
+    switch (scheduleType) {
+      case 'topic':
+        contentInput = topic
+        break
+      case 'category':
+        contentInput = categories
+        break
+      case 'keyword':
+        contentInput = keywords
+        break
+    }
+
+    if (!contentInput.trim()) {
+      setError(`Please enter ${scheduleType === 'topic' ? 'a topic' : scheduleType === 'category' ? 'categories' : 'keywords'}`)
+      return
+    }
+
+    setIsSubmitting(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const scheduleData: PostScheduleType = {
+        wordpress_site_id: selectedSite,
+        schedule_type: scheduleType as 'topic' | 'category' | 'keyword',
+        content_input: contentInput,
+        description: description || undefined,
+        frequency: frequency as 'daily' | 'weekly' | 'biweekly' | 'monthly',
+        word_count: parseInt(wordCount),
+        publish_time: publishTime
+      }
+
+      const { data, error: createError } = await scheduleService.createSchedule(scheduleData)
+
+      if (createError) {
+        throw createError
+      }
+
+      setSuccess('Post schedule created successfully! Your first blog post will be generated and scheduled shortly.')
+      
+      // Reset form
+      setTopic('')
+      setCategories('')
+      setKeywords('')
+      setDescription('')
+      setSelectedSite('')
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(''), 5000)
+      
+    } catch (err: any) {
+      console.error('Error creating schedule:', err)
+      setError(err.message || 'Failed to create schedule. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handlePostNow = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!selectedSite) {
+      setError('Please select a WordPress site')
+      return
+    }
+
+    let contentInput = ''
+    switch (scheduleType) {
+      case 'topic':
+        contentInput = topic
+        break
+      case 'category':
+        contentInput = categories
+        break
+      case 'keyword':
+        contentInput = keywords
+        break
+    }
+
+    if (!contentInput.trim()) {
+      setError(`Please enter ${scheduleType === 'topic' ? 'a topic' : scheduleType === 'category' ? 'categories' : 'keywords'}`)
+      return
+    }
+
+    setIsPostingNow(true)
+    setError('')
+    setSuccess('')
+
+    try {
+      const postData: ImmediatePostRequest = {
+        wordpress_site_id: selectedSite,
+        schedule_type: scheduleType as 'topic' | 'category' | 'keyword',
+        content_input: contentInput,
+        description: description || undefined,
+        word_count: parseInt(wordCount)
+      }
+
+      const { data, error: createError } = await scheduleService.createImmediatePost(postData)
+
+      if (createError) {
+        throw createError
+      }
+
+      setSuccess('Blog post created and queued for immediate publishing! It will be published to your WordPress site shortly.')
+      
+      // Reset form
+      setTopic('')
+      setCategories('')
+      setKeywords('')
+      setDescription('')
+      setSelectedSite('')
+      
+      // Clear success message after 5 seconds
+      setTimeout(() => setSuccess(''), 5000)
+      
+    } catch (err: any) {
+      console.error('Error creating immediate post:', err)
+      setError(err.message || 'Failed to create post. Please try again.')
+    } finally {
+      setIsPostingNow(false)
+    }
   }
 
   return (
@@ -74,10 +195,32 @@ const PostSchedule: React.FC = () => {
             <p className="text-gray-600">Set up automated blog posting for your WordPress sites</p>
           </motion.div>
 
+          {/* Success/Error Messages */}
+          {success && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center space-x-2"
+            >
+              <CheckCircle className="w-5 h-5" />
+              <span>{success}</span>
+            </motion.div>
+          )}
+
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg"
+            >
+              {error}
+            </motion.div>
+          )}
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Form */}
             <div className="lg:col-span-2">
-              <form onSubmit={handleSubmit} className="space-y-8">
+              <div className="space-y-8">
                 {/* Schedule Type */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -259,24 +402,56 @@ const PostSchedule: React.FC = () => {
                   </div>
                 </motion.div>
 
-                {/* Submit Button */}
+                {/* Action Buttons */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.4 }}
-                  className="flex justify-end"
+                  className="flex justify-end space-x-4"
                 >
                   <motion.button
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
-                    type="submit"
-                    className="bg-teal-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-teal-700 transition-colors flex items-center space-x-2"
+                    type="button"
+                    onClick={handlePostNow}
+                    disabled={isPostingNow || connectedSites.length === 0}
+                    className="bg-orange-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-orange-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Save className="w-5 h-5" />
-                    <span>Create Schedule</span>
+                    {isPostingNow ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Publishing Now...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-5 h-5" />
+                        <span>Post Now</span>
+                      </>
+                    )}
+                  </motion.button>
+                  
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    type="button"
+                    onClick={handleCreateSchedule}
+                    disabled={isSubmitting || connectedSites.length === 0}
+                    className="bg-teal-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-teal-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Creating Schedule...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5" />
+                        <span>Create Schedule</span>
+                      </>
+                    )}
                   </motion.button>
                 </motion.div>
-              </form>
+              </div>
             </div>
 
             {/* Sidebar */}
