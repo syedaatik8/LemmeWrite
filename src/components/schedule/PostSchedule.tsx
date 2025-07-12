@@ -534,6 +534,10 @@ const PostSchedule: React.FC = () => {
                   </div>
                   <div className="flex items-center space-x-2">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Featured images from Unsplash</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                     <span>Automatic publishing</span>
                   </div>
                   <div className="flex items-center space-x-2">

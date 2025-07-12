@@ -4,6 +4,7 @@ import { User, Globe, Camera, Save, Key } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
 import ProfileSettings from './ProfileSettings'
 import WordPressIntegration from './WordPressIntegration'
+import APIIntegrations from './APIIntegrations'
 
 const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('profile')
@@ -11,6 +12,7 @@ const Settings: React.FC = () => {
   const tabs = [
     { id: 'profile', name: 'Profile', icon: User },
     { id: 'wordpress', name: 'WordPress Integration', icon: Globe },
+    { id: 'integrations', name: 'API Integrations', icon: Key },
   ]
 
   return (
@@ -51,6 +53,7 @@ const Settings: React.FC = () => {
             <div className="p-6">
               {activeTab === 'profile' && <ProfileSettings />}
               {activeTab === 'wordpress' && <WordPressIntegration />}
+              {activeTab === 'integrations' && <APIIntegrations />}
             </div>
           </div>
         </div>

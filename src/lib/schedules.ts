@@ -161,7 +161,8 @@ class ScheduleService {
             status: 'publish',
             tags: blogContent.tags,
             categories: [], // You can add category logic here
-            metaDescription: blogContent.metaDescription
+            metaDescription: blogContent.metaDescription,
+            featuredImage: blogContent.featuredImage
           }
         )
 
@@ -403,7 +404,8 @@ class ScheduleService {
           status: 'publish',
           tags: post.tags,
           categories: [],
-          metaDescription: post.meta_description
+          metaDescription: post.meta_description,
+          featuredImage: undefined // Featured image would be embedded in content already
         }
       )
 

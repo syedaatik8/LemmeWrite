@@ -17,6 +17,11 @@ interface BlogGenerationResponse {
   tags: string[]
   metaDescription: string
   seoKeywords: string[]
+  featuredImage?: {
+    url: string
+    altText: string
+    attribution: string
+  }
 }
 
 class OpenAIService {
@@ -43,6 +48,9 @@ class OpenAIService {
     console.log('=== OpenAI Blog Generation Started ===')
     console.log('Request:', request)
     console.log('API Key available:', !!this.apiKey)
+    
+    // Import Unsplash service
+    const { unsplashService } = await import('./unsplash')
 
     // Check if API key is available
     if (!this.apiKey || this.apiKey.trim() === '') {
@@ -125,6 +133,26 @@ class OpenAIService {
       }
       
       const result = this.validateAndFormatResponse(content)
+      
+      // Find and add featured image
+      try {
+        console.log('Searching for featured image...')
+        const featuredImage = await unsplashService.findBestImageForTitle(result.title)
+        if (featuredImage) {
+          result.featuredImage = {
+            url: featuredImage.url,
+            altText: featuredImage.altText,
+            attribution: unsplashService.getAttributionText(featuredImage)
+          }
+          console.log('Featured image added:', featuredImage.id)
+        } else {
+          console.log('No suitable featured image found')
+        }
+      } catch (imageError) {
+        console.warn('Failed to add featured image:', imageError)
+        // Continue without image - don't fail the entire generation
+      }
+      
       console.log('=== OpenAI Blog Generation Completed Successfully ===')
       return result
 
