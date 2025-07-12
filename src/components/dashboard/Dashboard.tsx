@@ -11,9 +11,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 
 const Dashboard: React.FC = () => {
-  const { connectedSites, user } = useAuth()
+  const { connectedSites, user, userPoints } = useAuth()
   const [showPopup, setShowPopup] = useState(false)
-  const [userPoints, setUserPoints] = useState(1250) // Default value
   const [postsThisMonth, setPostsThisMonth] = useState(0)
   const [scheduledPosts, setScheduledPosts] = useState(0)
   const [draftPosts, setDraftPosts] = useState(0)
@@ -53,12 +52,6 @@ const Dashboard: React.FC = () => {
       setPostsThisMonth(thisMonthPosts)
       setScheduledPosts(pendingPosts)
       setDraftPosts(draftPostsCount)
-
-      // Calculate points used this month (assuming 15 points per post)
-      const pointsUsed = thisMonthPosts * 15
-      const remainingPoints = Math.max(1250 - pointsUsed, 0)
-      setUserPoints(remainingPoints)
-
     } catch (error) {
       console.error('Error loading user stats:', error)
     }

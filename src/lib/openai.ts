@@ -22,6 +22,11 @@ interface BlogGenerationResponse {
 class OpenAIService {
   private apiKey: string
   private baseUrl = 'https://api.openai.com/v1'
+  private model = 'gpt-3.5-turbo' // Using cheaper model for testing
+  // Alternative models:
+  // 'gpt-3.5-turbo' - Cheapest option, good for testing
+  // 'gpt-4o-mini' - Better quality, still affordable
+  // 'gpt-4' - Best quality, most expensive
 
   constructor() {
     this.apiKey = import.meta.env.VITE_OPENAI_API_KEY
@@ -54,7 +59,7 @@ class OpenAIService {
       console.log('Making OpenAI API request...')
       
       const requestBody = {
-        model: 'gpt-4',
+        model: this.model,
         messages: [
           {
             role: 'system',
@@ -115,9 +120,8 @@ class OpenAIService {
         // Try to parse as JSON first
         content = JSON.parse(data.choices[0].message.content)
       } catch (parseError) {
-        // If not JSON, treat as plain text and structure it
-        const textContent = data.choices[0].message.content
-        content = this.parseTextResponse(textContent, request)
+        console.error('Failed to parse OpenAI response as JSON:', parseError)
+        throw new Error('OpenAI returned invalid JSON response format')
       }
       
       const result = this.validateAndFormatResponse(content)
@@ -140,98 +144,6 @@ class OpenAIService {
       // Only fall back for network errors, not API key issues
       console.error('OpenAI API call failed, throwing error instead of using fallback')
       throw new Error(`Failed to generate content: ${error.message}`)
-    }
-  }
-
-  private parseTextResponse(textContent: string, request: BlogGenerationRequest): any {
-    // Extract title (first line or H1)
-    const lines = textContent.split('\n').filter(line => line.trim())
-    const title = lines[0]?.replace(/^#\s*/, '') || `${this.capitalizeWords(request.content)}: A Comprehensive Guide`
-    
-    // Convert to HTML
-    const htmlContent = this.convertTextToHtml(textContent)
-    
-    // Generate excerpt from first paragraph
-    const firstParagraph = lines.find(line => line.length > 50 && !line.startsWith('#'))
-    const excerpt = firstParagraph?.substring(0, 150) + '...' || `Learn about ${request.content} in this comprehensive guide.`
-    
-    return {
-      title,
-      content: htmlContent,
-      excerpt,
-      tags: [request.content.toLowerCase().replace(/\s+/g, '-'), 'guide', 'tips'],
-      metaDescription: excerpt,
-      seoKeywords: [request.content, `${request.content} guide`, `${request.content} tips`]
-    }
-  }
-
-  private convertTextToHtml(text: string): string {
-    return text
-      .split('\n')
-      .map(line => {
-        line = line.trim()
-        if (!line) return ''
-        if (line.startsWith('# ')) return `<h1>${line.substring(2)}</h1>`
-        if (line.startsWith('## ')) return `<h2>${line.substring(3)}</h2>`
-        if (line.startsWith('### ')) return `<h3>${line.substring(4)}</h3>`
-        if (line.startsWith('- ')) return `<li>${line.substring(2)}</li>`
-        return `<p>${line}</p>`
-      })
-      .join('\n')
-      .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
-      .replace(/<\/li>\n?<li>/g, '</li><li>')
-  }
-
-  private generateFallbackContent(request: BlogGenerationRequest): BlogGenerationResponse {
-    console.log('=== Using Fallback Content Generation ===')
-    const { content, type, wordCount, description } = request
-    
-    const title = `${this.capitalizeWords(content)}: A Comprehensive Guide`
-    const slug = content.toLowerCase().replace(/\s+/g, '-')
-    
-    const htmlContent = `
-      <h2>Introduction</h2>
-      <p>Welcome to our comprehensive guide on ${content}. ${description ? description + ' ' : ''}In this article, we'll explore everything you need to know about this ${type === 'topic' ? 'topic' : type === 'category' ? 'category' : 'keyword area'}.</p>
-      
-      <h2>Understanding ${this.capitalizeWords(content)}</h2>
-      <p>${this.capitalizeWords(content)} is an important ${type === 'topic' ? 'subject' : type === 'category' ? 'field' : 'area'} that deserves careful consideration. Let's dive into the key aspects that make it significant.</p>
-      
-      <h3>Key Benefits</h3>
-      <ul>
-        <li>Improved understanding and knowledge</li>
-        <li>Enhanced practical applications</li>
-        <li>Better decision-making capabilities</li>
-        <li>Increased efficiency and effectiveness</li>
-      </ul>
-      
-      <h2>Best Practices for ${this.capitalizeWords(content)}</h2>
-      <p>When working with ${content}, it's essential to follow established best practices. These guidelines will help you achieve optimal results and avoid common pitfalls.</p>
-      
-      <h3>Getting Started</h3>
-      <p>Begin by understanding the fundamentals of ${content}. This foundation will serve you well as you progress to more advanced concepts and applications.</p>
-      
-      <h2>Common Challenges and Solutions</h2>
-      <p>Like any ${type === 'topic' ? 'subject' : type === 'category' ? 'field' : 'area'}, ${content} comes with its own set of challenges. Here are some common issues and their solutions:</p>
-      
-      <h3>Challenge 1: Getting Started</h3>
-      <p>Many people find it difficult to begin with ${content}. The key is to start small and gradually build your knowledge and skills.</p>
-      
-      <h3>Challenge 2: Staying Updated</h3>
-      <p>The field of ${content} is constantly evolving. Make sure to stay informed about the latest developments and trends.</p>
-      
-      <h2>Conclusion</h2>
-      <p>In conclusion, ${content} is a valuable ${type === 'topic' ? 'topic' : type === 'category' ? 'field' : 'area'} that offers numerous benefits and opportunities. By following the guidelines and best practices outlined in this article, you'll be well-equipped to succeed in your ${content} endeavors.</p>
-      
-      <p>Remember to continue learning and adapting as you gain more experience with ${content}. The journey of mastering ${content} is ongoing, but the rewards are well worth the effort.</p>
-    `
-    
-    return {
-      title,
-      content: htmlContent,
-      excerpt: `Discover everything you need to know about ${content} in this comprehensive guide. Learn best practices, overcome challenges, and achieve success.`,
-      tags: [slug, type, 'guide', 'tips', 'best-practices'],
-      metaDescription: `Complete guide to ${content}. Learn key concepts, best practices, and solutions to common challenges. Perfect for beginners and experts alike.`,
-      seoKeywords: [content, `${content} guide`, `${content} tips`, `${content} best practices`, `how to ${content}`]
     }
   }
 
@@ -282,7 +194,9 @@ Please return a JSON object with the following structure:
   private calculateMaxTokens(wordCount: number): number {
     // Rough estimation: 1 word ≈ 1.3 tokens
     // Add extra tokens for JSON structure and formatting
-    return Math.ceil(wordCount * 1.5) + 500
+    // Reduced max tokens for gpt-3.5-turbo (has 4096 token limit)
+    const baseTokens = Math.ceil(wordCount * 1.5) + 500
+    return Math.min(baseTokens, 3500) // Leave room for input tokens
   }
 
   private validateAndFormatResponse(content: any): BlogGenerationResponse {
@@ -304,6 +218,7 @@ Please return a JSON object with the following structure:
   async testConnection(): Promise<boolean> {
     try {
       console.log('Testing OpenAI connection...')
+      console.log('Using model:', this.model)
       const response = await fetch(`${this.baseUrl}/models`, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`

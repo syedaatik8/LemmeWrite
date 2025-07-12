@@ -10,8 +10,7 @@ import { scheduleService, PostSchedule as PostScheduleType, ImmediatePostRequest
 import { supabase } from '../../lib/supabase'
 
 const PostSchedule: React.FC = () => {
-  const { connectedSites } = useAuth()
-  const [userPoints, setUserPoints] = useState(1250)
+  const { connectedSites, userPoints, loadUserPoints } = useAuth()
   const [scheduleType, setScheduleType] = useState('topic')
   const [frequency, setFrequency] = useState('daily')
   const [wordCount, setWordCount] = useState('1000')
@@ -25,39 +24,6 @@ const PostSchedule: React.FC = () => {
   const [isPostingNow, setIsPostingNow] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
-
-  // Load user points on component mount
-  useEffect(() => {
-    loadUserPoints()
-  }, [])
-
-  const loadUserPoints = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-
-      // Get posts created this month to calculate points used
-      const now = new Date()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      
-      const { data: postsData, error } = await supabase
-        .from('scheduled_posts')
-        .select('id, created_at')
-        .eq('user_id', user.id)
-        .gte('created_at', startOfMonth.toISOString())
-
-      if (error) throw error
-
-      // Calculate points used (15 points per post)
-      const postsThisMonth = postsData?.length || 0
-      const pointsUsed = postsThisMonth * 15
-      const remainingPoints = Math.max(1250 - pointsUsed, 0)
-      
-      setUserPoints(remainingPoints)
-    } catch (error) {
-      console.error('Error loading user points:', error)
-    }
-  }
 
   const scheduleTypes = [
     { id: 'topic', name: 'Topic-Based', icon: Target, description: 'Generate posts based on specific topics' },
@@ -144,6 +110,9 @@ const PostSchedule: React.FC = () => {
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(''), 5000)
       
+      // Reload user points to reflect the new post
+      loadUserPoints()
+      
     } catch (err: any) {
       console.error('Error creating schedule:', err)
       setError(err.message || 'Failed to create schedule. Please try again.')
@@ -214,6 +183,9 @@ const PostSchedule: React.FC = () => {
       
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(''), 5000)
+      
+      // Reload user points to reflect the new post
+      loadUserPoints()
       
     } catch (err: any) {
       console.error('Error creating immediate post:', err)

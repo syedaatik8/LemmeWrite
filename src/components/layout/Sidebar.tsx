@@ -11,40 +11,7 @@ import { supabase } from '../../lib/supabase'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
-  const { user } = useAuth()
-  const [userPoints, setUserPoints] = React.useState(1250)
-
-  // Load user points
-  React.useEffect(() => {
-    if (user) {
-      loadUserPoints()
-    }
-  }, [user])
-
-  const loadUserPoints = async () => {
-    try {
-      // Get posts created this month to calculate points used
-      const now = new Date()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      
-      const { data: postsData, error } = await supabase
-        .from('scheduled_posts')
-        .select('id, created_at')
-        .eq('user_id', user?.id)
-        .gte('created_at', startOfMonth.toISOString())
-
-      if (error) throw error
-
-      // Calculate points used (15 points per post)
-      const postsThisMonth = postsData?.length || 0
-      const pointsUsed = postsThisMonth * 15
-      const remainingPoints = Math.max(1250 - pointsUsed, 0)
-      
-      setUserPoints(remainingPoints)
-    } catch (error) {
-      console.error('Error loading user points:', error)
-    }
-  }
+  const { userPoints } = useAuth()
 
   const menuItems = [
     { name: 'Dashboard', icon: Home, path: '/dashboard' },
