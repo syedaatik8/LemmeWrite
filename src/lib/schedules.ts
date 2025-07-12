@@ -2,6 +2,8 @@
 // Handles all post schedule operations
 
 import { supabase } from './supabase'
+import { openAIService } from './openai'
+import { wordPressService } from './wordpress'
 
 export interface PostSchedule {
   id?: string
@@ -90,34 +92,138 @@ class ScheduleService {
 
   async createImmediatePost(postData: ImmediatePostRequest): Promise<{ data: ScheduledPost | null, error: any }> {
     try {
-      const { data, error } = await supabase
-        .rpc('create_immediate_post', {
-          p_user_id: (await supabase.auth.getUser()).data.user?.id,
-          p_wordpress_site_id: postData.wordpress_site_id,
-          p_schedule_type: postData.schedule_type,
-          p_content_input: postData.content_input,
-          p_description: postData.description || null,
-          p_word_count: postData.word_count
-        })
-
-      if (error) {
-        console.error('Error creating immediate post:', error)
-        return { data: null, error }
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return { data: null, error: 'User not authenticated' }
       }
 
-      // Get the created post
-      const { data: post, error: fetchError } = await supabase
-        .from('scheduled_posts')
+      // Get WordPress site details
+      const { data: wpSite, error: siteError } = await supabase
+        .from('wordpress_sites')
         .select('*')
-        .eq('id', data)
+        .eq('id', postData.wordpress_site_id)
+        .eq('user_id', user.id)
         .single()
 
-      if (fetchError) {
-        console.error('Error fetching created post:', fetchError)
-        return { data: null, error: fetchError }
+      if (siteError || !wpSite) {
+        return { data: null, error: 'WordPress site not found or not accessible' }
       }
 
-      return { data: post, error: null }
+      // Generate content using OpenAI
+      console.log('Generating content with OpenAI...')
+      const blogContent = await openAIService.generateBlogPost({
+        type: postData.schedule_type,
+        content: postData.content_input,
+        description: postData.description,
+        wordCount: postData.word_count,
+        tone: 'professional',
+        seoFocus: true
+      })
+
+      // Create the scheduled post record
+      const { data: scheduledPost, error: insertError } = await supabase
+        .from('scheduled_posts')
+        .insert([{
+          user_id: user.id,
+          wordpress_site_id: postData.wordpress_site_id,
+          title: blogContent.title,
+          content: blogContent.content,
+          excerpt: blogContent.excerpt,
+          tags: blogContent.tags,
+          meta_description: blogContent.metaDescription,
+          seo_keywords: blogContent.seoKeywords,
+          status: 'pending',
+          scheduled_for: new Date().toISOString()
+        }])
+        .select()
+        .single()
+
+      if (insertError) {
+        console.error('Error creating scheduled post:', insertError)
+        return { data: null, error: insertError }
+      }
+
+      // Immediately attempt to publish to WordPress
+      try {
+        console.log('Publishing to WordPress...')
+        const publishResult = await wordPressService.publishPost(
+          {
+            id: wpSite.id,
+            name: wpSite.name,
+            url: wpSite.url,
+            username: wpSite.username,
+            password: wpSite.password
+          },
+          {
+            title: blogContent.title,
+            content: blogContent.content,
+            excerpt: blogContent.excerpt,
+            status: 'publish',
+            tags: blogContent.tags,
+            categories: [], // You can add category logic here
+            metaDescription: blogContent.metaDescription
+          }
+        )
+
+        if (publishResult.success) {
+          // Update the post status to published
+          await supabase
+            .from('scheduled_posts')
+            .update({
+              status: 'published',
+              published_at: new Date().toISOString(),
+              wordpress_post_id: publishResult.postId
+            })
+            .eq('id', scheduledPost.id)
+
+          return { 
+            data: { 
+              ...scheduledPost, 
+              status: 'published',
+              wordpress_post_id: publishResult.postId 
+            }, 
+            error: null 
+          }
+        } else {
+          // Update the post status to failed
+          await supabase
+            .from('scheduled_posts')
+            .update({
+              status: 'failed',
+              error_message: publishResult.error
+            })
+            .eq('id', scheduledPost.id)
+
+          return { 
+            data: { 
+              ...scheduledPost, 
+              status: 'failed',
+              error_message: publishResult.error 
+            }, 
+            error: publishResult.error 
+          }
+        }
+      } catch (publishError) {
+        console.error('Error publishing to WordPress:', publishError)
+        
+        // Update the post status to failed
+        await supabase
+          .from('scheduled_posts')
+          .update({
+            status: 'failed',
+            error_message: publishError.message
+          })
+          .eq('id', scheduledPost.id)
+
+        return { 
+          data: { 
+            ...scheduledPost, 
+            status: 'failed',
+            error_message: publishError.message 
+          }, 
+          error: publishError.message 
+        }
+      }
     } catch (err) {
       console.error('Error in createImmediatePost:', err)
       return { data: null, error: err }
@@ -186,18 +292,27 @@ class ScheduleService {
         return { data: null, error: scheduleError || 'Schedule not found' }
       }
 
-      // This would typically call your OpenAI service to generate content
-      // For now, we'll create a placeholder post
+      // Generate content using OpenAI
+      console.log('Generating content for schedule:', scheduleId)
+      const blogContent = await openAIService.generateBlogPost({
+        type: schedule.schedule_type,
+        content: schedule.content_input,
+        description: schedule.description,
+        wordCount: schedule.word_count,
+        tone: 'professional',
+        seoFocus: true
+      })
+
       const generatedPost: Omit<ScheduledPost, 'id' | 'created_at' | 'updated_at'> = {
         schedule_id: scheduleId,
         user_id: schedule.user_id,
         wordpress_site_id: schedule.wordpress_site_id,
-        title: `Generated Post: ${schedule.content_input}`,
-        content: `<h2>Introduction</h2><p>This is a generated blog post about ${schedule.content_input}.</p><h2>Main Content</h2><p>Content will be generated using AI based on your ${schedule.schedule_type}: ${schedule.content_input}</p><h2>Conclusion</h2><p>This concludes our discussion on ${schedule.content_input}.</p>`,
-        excerpt: `A comprehensive guide about ${schedule.content_input}`,
-        tags: [schedule.content_input.toLowerCase().replace(/\s+/g, '-')],
-        meta_description: `Learn everything about ${schedule.content_input} in this comprehensive guide.`,
-        seo_keywords: [schedule.content_input],
+        title: blogContent.title,
+        content: blogContent.content,
+        excerpt: blogContent.excerpt,
+        tags: blogContent.tags,
+        meta_description: blogContent.metaDescription,
+        seo_keywords: blogContent.seoKeywords,
         status: 'pending',
         scheduled_for: schedule.next_post_date || new Date().toISOString()
       }
@@ -252,17 +367,71 @@ class ScheduleService {
 
   async publishPost(postId: string): Promise<{ error: any }> {
     try {
-      // This would integrate with your WordPress publishing service
-      // For now, we'll just update the status
-      const { error } = await supabase
+      // Get the post details
+      const { data: post, error: fetchError } = await supabase
         .from('scheduled_posts')
-        .update({ 
-          status: 'published',
-          published_at: new Date().toISOString()
-        })
+        .select(`
+          *,
+          wordpress_sites (
+            id,
+            name,
+            url,
+            username,
+            password
+          )
+        `)
         .eq('id', postId)
+        .single()
 
-      return { error }
+      if (fetchError || !post) {
+        return { error: fetchError || 'Post not found' }
+      }
+
+      // Publish to WordPress
+      const publishResult = await wordPressService.publishPost(
+        {
+          id: post.wordpress_sites.id,
+          name: post.wordpress_sites.name,
+          url: post.wordpress_sites.url,
+          username: post.wordpress_sites.username,
+          password: post.wordpress_sites.password
+        },
+        {
+          title: post.title,
+          content: post.content,
+          excerpt: post.excerpt,
+          status: 'publish',
+          tags: post.tags,
+          categories: [],
+          metaDescription: post.meta_description
+        }
+      )
+
+      if (publishResult.success) {
+        // Update post status to published
+        const { error } = await supabase
+          .from('scheduled_posts')
+          .update({ 
+            status: 'published',
+            published_at: new Date().toISOString(),
+            wordpress_post_id: publishResult.postId
+          })
+          .eq('id', postId)
+
+        return { error }
+      } else {
+        // Update post status to failed
+        const { error } = await supabase
+          .from('scheduled_posts')
+          .update({ 
+            status: 'failed',
+            error_message: publishResult.error
+          })
+          .eq('id', postId)
+
+        return { error: publishResult.error }
+      }
+
     } catch (err) {
       console.error('Error publishing post:', err)
       return { error: err }
@@ -271,3 +440,4 @@ class ScheduleService {
 }
 
 export const scheduleService = new ScheduleService()
+export type PostScheduleType = PostSchedule

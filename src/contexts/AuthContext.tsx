@@ -14,7 +14,9 @@ interface AuthContextType {
   session: Session | null
   loading: boolean
   connectedSites: WordPressSite[]
+  userPoints: number
   loadConnectedSites: (userId?: string) => Promise<void>
+  loadUserPoints: (userId?: string) => Promise<void>
   signUp: (email: string, password: string, metadata?: any) => Promise<any>
   signIn: (email: string, password: string) => Promise<any>
   signOut: () => Promise<void>
@@ -37,31 +39,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [connectedSites, setConnectedSites] = useState<WordPressSite[]>([])
+  const [userPoints, setUserPoints] = useState(1250)
   const [sitesLoaded, setSitesLoaded] = useState(false)
+  const [pointsLoaded, setPointsLoaded] = useState(false)
 
   useEffect(() => {
-    // Configure session persistence for 24 hours
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        // Check if session is still valid (within 24 hours)
-        const sessionAge = Date.now() - new Date(session.user.created_at).getTime()
-        const twentyFourHours = 24 * 60 * 60 * 1000
-        
-        if (sessionAge > twentyFourHours) {
-          // Session is older than 24 hours, sign out
-          supabase.auth.signOut()
-          setSession(null)
-          setUser(null)
-          setConnectedSites([])
-          setSitesLoaded(false)
-        } else {
-          setSession(session)
-          setUser(session.user)
-          // Load connected sites only once when session is established
-          if (!sitesLoaded) {
-            loadConnectedSites(session.user.id)
-          }
-        }
+      setSession(session)
+      setUser(session?.user ?? null)
+      if (session?.user && (!sitesLoaded || !pointsLoaded)) {
+        loadConnectedSites(session.user.id)
+        loadUserPoints(session.user.id)
       }
       setLoading(false)
     })
@@ -69,28 +57,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'SIGNED_OUT') {
-          setSession(null)
-          setUser(null)
-          setConnectedSites([])
-          setSitesLoaded(false)
+        console.log('Auth state change:', event, session?.user?.email)
+        
+        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+          if (event === 'SIGNED_OUT') {
+            setSession(null)
+            setUser(null)
+            setConnectedSites([])
+            setSitesLoaded(false)
+            setPointsLoaded(false)
+          } else {
+            setSession(session)
+            setUser(session?.user ?? null)
+          }
         } else if (event === 'SIGNED_IN' && session) {
           setSession(session)
           setUser(session.user)
-          // Load connected sites only once when user signs in
-          if (!sitesLoaded) {
-            loadConnectedSites(session.user.id)
-          }
-        } else if (event === 'TOKEN_REFRESHED' && session) {
-          setSession(session)
-          setUser(session.user)
+          setSitesLoaded(false)
+          setPointsLoaded(false)
+          loadConnectedSites(session.user.id)
+          loadUserPoints(session.user.id)
         }
         setLoading(false)
       }
     )
 
     return () => subscription.unsubscribe()
-  }, [sitesLoaded])
+  }, [])
 
   const loadConnectedSites = async (userId?: string) => {
     const targetUserId = userId || user?.id
@@ -118,6 +111,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
+  const loadUserPoints = async (userId?: string) => {
+    const targetUserId = userId || user?.id
+    if (!targetUserId) {
+      console.warn('No user ID available for loading user points')
+      setUserPoints(1250)
+      setPointsLoaded(false)
+      return
+    }
+
+    try {
+      // Get posts created this month to calculate points used
+      const now = new Date()
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+      
+      const { data: postsData, error } = await supabase
+        .from('scheduled_posts')
+        .select('id, created_at')
+        .eq('user_id', targetUserId)
+        .gte('created_at', startOfMonth.toISOString())
+
+      if (error) throw error
+
+      // Calculate points used (15 points per post)
+      const postsThisMonth = postsData?.length || 0
+      const pointsUsed = postsThisMonth * 15
+      const remainingPoints = Math.max(1250 - pointsUsed, 0)
+      
+      setUserPoints(remainingPoints)
+      setPointsLoaded(true)
+    } catch (error) {
+      console.error('Error loading user points:', error)
+      setUserPoints(1250)
+      setPointsLoaded(false)
+    }
+  }
+
   const signUp = async (email: string, password: string, metadata?: any) => {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -135,18 +164,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       password,
     })
     
-    if (data.session) {
-      // Reset sites loaded flag to trigger fresh load
-      setSitesLoaded(false)
-    }
-    
     return { data, error }
   }
 
   const signOut = async () => {
     await supabase.auth.signOut()
     setConnectedSites([])
+    setUserPoints(1250)
     setSitesLoaded(false)
+    setPointsLoaded(false)
   }
 
   const resetPassword = async (email: string) => {
@@ -172,7 +198,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     session,
     loading,
     connectedSites,
+    userPoints,
     loadConnectedSites,
+    loadUserPoints,
     signUp,
     signIn,
     signOut,

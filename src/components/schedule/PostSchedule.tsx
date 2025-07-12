@@ -6,10 +6,11 @@ import {
 } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
-import { scheduleService, PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
+import { scheduleService, PostSchedule as PostScheduleType, ImmediatePostRequest } from '../../lib/schedules'
+import { supabase } from '../../lib/supabase'
 
 const PostSchedule: React.FC = () => {
-  const { connectedSites } = useAuth()
+  const { connectedSites, userPoints, loadUserPoints } = useAuth()
   const [scheduleType, setScheduleType] = useState('topic')
   const [frequency, setFrequency] = useState('daily')
   const [wordCount, setWordCount] = useState('1000')
@@ -109,6 +110,9 @@ const PostSchedule: React.FC = () => {
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(''), 5000)
       
+      // Reload user points to reflect the new post
+      loadUserPoints()
+      
     } catch (err: any) {
       console.error('Error creating schedule:', err)
       setError(err.message || 'Failed to create schedule. Please try again.')
@@ -162,7 +166,13 @@ const PostSchedule: React.FC = () => {
         throw createError
       }
 
-      setSuccess('Blog post created and queued for immediate publishing! It will be published to your WordPress site shortly.')
+      if (data?.status === 'published') {
+        setSuccess(`Blog post "${data.title}" has been successfully published to your WordPress site!`)
+      } else if (data?.status === 'failed') {
+        setError(`Failed to publish blog post: ${data.error_message || 'Unknown error occurred'}`)
+      } else {
+        setSuccess('Blog post created and queued for publishing! It will be published to your WordPress site shortly.')
+      }
       
       // Reset form
       setTopic('')
@@ -173,6 +183,9 @@ const PostSchedule: React.FC = () => {
       
       // Clear success message after 5 seconds
       setTimeout(() => setSuccess(''), 5000)
+      
+      // Reload user points to reflect the new post
+      loadUserPoints()
       
     } catch (err: any) {
       console.error('Error creating immediate post:', err)
@@ -493,9 +506,9 @@ const PostSchedule: React.FC = () => {
                   <h3 className="font-semibold text-gray-800">Available Points</h3>
                   <Zap className="w-5 h-5 text-teal-600" />
                 </div>
-                <div className="text-3xl font-bold text-teal-600 mb-2">1,250</div>
+                <div className="text-3xl font-bold text-teal-600 mb-2">{userPoints.toLocaleString()}</div>
                 <div className="text-sm text-gray-600 mb-4">
-                  Enough for {Math.floor(1250 / calculateCost())} posts
+                  Enough for {Math.floor(userPoints / calculateCost())} posts
                 </div>
                 <button className="w-full bg-teal-600 text-white py-2 rounded-lg hover:bg-teal-700 transition-colors text-sm">
                   Upgrade Plan

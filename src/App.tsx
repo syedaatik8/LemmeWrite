@@ -8,6 +8,7 @@ import ForgotPassword from './components/auth/ForgotPassword'
 import Dashboard from './components/dashboard/Dashboard'
 import Settings from './components/settings/Settings'
 import PostSchedule from './components/schedule/PostSchedule'
+import Analytics from './components/analytics/Analytics'
 
 function App() {
   return (
@@ -43,7 +44,14 @@ function App() {
             } 
           />
           {/* Placeholder routes for sidebar navigation */}
-          <Route path="/analytics" element={<ProtectedRoute><div className="p-6"><h1>Analytics - Coming Soon</h1></div></ProtectedRoute>} />
+          <Route 
+            path="/analytics" 
+            element={
+              <ProtectedRoute>
+                <Analytics />
+              </ProtectedRoute>
+            } 
+          />
           <Route path="/content" element={<ProtectedRoute><div className="p-6"><h1>Content Library - Coming Soon</h1></div></ProtectedRoute>} />
           <Route path="/audience" element={<ProtectedRoute><div className="p-6"><h1>Audience - Coming Soon</h1></div></ProtectedRoute>} />
           <Route path="/campaigns" element={<ProtectedRoute><div className="p-6"><h1>Campaigns - Coming Soon</h1></div></ProtectedRoute>} />

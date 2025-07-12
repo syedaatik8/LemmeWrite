@@ -19,7 +19,7 @@ interface WordPressSite {
 }
 
 const WordPressIntegration: React.FC = () => {
-  const { user } = useAuth()
+  const { user, loadConnectedSites } = useAuth()
   const [sites, setSites] = useState<WordPressSite[]>([])
   const [loading, setLoading] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
@@ -101,7 +101,6 @@ const WordPressIntegration: React.FC = () => {
   }
 
   const handleUpdateSite = async (id: string, updates: Partial<WordPressSite>) => {
-    const { loadConnectedSites } = useAuth()
     try {
       setError('')
       const { data, error } = await supabase
@@ -130,7 +129,6 @@ const WordPressIntegration: React.FC = () => {
   }
 
   const handleDeleteSite = async (id: string) => {
-    const { loadConnectedSites } = useAuth()
     if (!confirm('Are you sure you want to delete this WordPress site?')) {
       return
     }
@@ -157,7 +155,6 @@ const WordPressIntegration: React.FC = () => {
   }
 
   const handleTestConnection = async (id: string) => {
-    const { loadConnectedSites } = useAuth()
     try {
       // Update status to testing
       await handleUpdateSite(id, { status: 'testing' })
