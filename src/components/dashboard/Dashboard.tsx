@@ -9,10 +9,12 @@ import { Link } from 'react-router-dom'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import PricingModal from '../pricing/PricingModal'
 
 const Dashboard: React.FC = () => {
   const { connectedSites, user, userPoints } = useAuth()
   const [showPopup, setShowPopup] = useState(false)
+  const [showPricing, setShowPricing] = useState(false)
   const [postsThisMonth, setPostsThisMonth] = useState(0)
   const [scheduledPosts, setScheduledPosts] = useState(0)
   const [draftPosts, setDraftPosts] = useState(0)
@@ -298,6 +300,12 @@ const Dashboard: React.FC = () => {
                     key={action.title}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      if (action.title === 'Upgrade Plan') {
+                        setShowPricing(true)
+                      }
+                      setShowPopup(false)
+                    }}
                     className="w-full flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     <div className={`w-8 h-8 ${action.color} rounded-lg flex items-center justify-center`}>
@@ -311,6 +319,12 @@ const Dashboard: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Pricing Modal */}
+      <PricingModal
+        isOpen={showPricing}
+        onClose={() => setShowPricing(false)}
+      />
     </DashboardLayout>
   )
 }

@@ -18,6 +18,11 @@ interface WordPressPost {
   categories: string[]
   metaDescription?: string
   scheduledDate?: string
+  featuredImage?: {
+    url: string
+    altText: string
+    attribution: string
+  }
 }
 
 interface WordPressResponse {
@@ -39,6 +44,18 @@ class WordPressService {
       const categoryIds = await this.getOrCreateCategories(site, post.categories)
       const tagIds = await this.getOrCreateTags(site, post.tags)
 
+      // Handle featured image if provided
+      let featuredMediaId: number | undefined
+      if (post.featuredImage) {
+        try {
+          featuredMediaId = await this.uploadFeaturedImage(site, post.featuredImage, post.title)
+          console.log('Featured image uploaded with ID:', featuredMediaId)
+        } catch (imageError) {
+          console.warn('Failed to upload featured image:', imageError)
+          // Continue without featured image
+        }
+      }
+
       const postData = {
         title: post.title,
         content: post.content,
@@ -46,6 +63,7 @@ class WordPressService {
         status: post.status,
         categories: categoryIds,
         tags: tagIds,
+        ...(featuredMediaId && { featured_media: featuredMediaId }),
         ...(post.metaDescription && {
           meta: {
             _yoast_wpseo_metadesc: post.metaDescription
@@ -109,6 +127,53 @@ class WordPressService {
     } catch {
       console.log('WordPress connection test failed')
       return false
+    }
+  }
+
+  private async uploadFeaturedImage(
+    site: WordPressSite, 
+    image: { url: string; altText: string; attribution: string }, 
+    postTitle: string
+  ): Promise<number> {
+    try {
+      const auth = btoa(`${site.username}:${site.password}`)
+      const mediaUrl = `${site.url.replace(/\/$/, '')}/wp-json/wp/v2/media`
+
+      // Download image from Unsplash
+      const imageResponse = await fetch(image.url)
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to download image: ${imageResponse.status}`)
+      }
+
+      const imageBlob = await imageResponse.blob()
+      const fileName = `featured-image-${Date.now()}.jpg`
+
+      // Create form data for WordPress media upload
+      const formData = new FormData()
+      formData.append('file', imageBlob, fileName)
+      formData.append('title', `Featured image for: ${postTitle}`)
+      formData.append('alt_text', image.altText)
+      formData.append('caption', image.attribution)
+
+      // Upload to WordPress
+      const uploadResponse = await fetch(mediaUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Basic ${auth}`
+        },
+        body: formData
+      })
+
+      if (!uploadResponse.ok) {
+        const errorData = await uploadResponse.json()
+        throw new Error(errorData.message || `Upload failed: ${uploadResponse.status}`)
+      }
+
+      const mediaData = await uploadResponse.json()
+      return mediaData.id
+    } catch (error) {
+      console.error('Error uploading featured image:', error)
+      throw error
     }
   }
 

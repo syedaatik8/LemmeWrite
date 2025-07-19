@@ -12,9 +12,13 @@ export interface PostSchedule {
   schedule_type: 'topic' | 'category' | 'keyword'
   content_input: string
   description?: string
+  image_keywords?: string
   frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly'
   word_count: number
   publish_time: string
+  stop_condition?: 'never' | 'date' | 'post_count' | 'points_exhausted'
+  stop_date?: string
+  max_posts?: number
   status?: 'active' | 'paused' | 'completed'
   next_post_date?: string
   posts_generated?: number
@@ -47,7 +51,9 @@ export interface ImmediatePostRequest {
   schedule_type: 'topic' | 'category' | 'keyword'
   content_input: string
   description?: string
+  image_keywords?: string
   word_count: number
+  humanizeContent?: boolean
 }
 
 class ScheduleService {
@@ -115,9 +121,11 @@ class ScheduleService {
         type: postData.schedule_type,
         content: postData.content_input,
         description: postData.description,
+        imageKeywords: postData.image_keywords,
         wordCount: postData.word_count,
         tone: 'professional',
-        seoFocus: true
+        seoFocus: true,
+        humanizeContent: postData.humanizeContent
       })
 
       // Create the scheduled post record
@@ -161,7 +169,8 @@ class ScheduleService {
             status: 'publish',
             tags: blogContent.tags,
             categories: [], // You can add category logic here
-            metaDescription: blogContent.metaDescription
+            metaDescription: blogContent.metaDescription,
+            featuredImage: blogContent.featuredImage
           }
         )
 
@@ -298,6 +307,7 @@ class ScheduleService {
         type: schedule.schedule_type,
         content: schedule.content_input,
         description: schedule.description,
+        imageKeywords: schedule.image_keywords,
         wordCount: schedule.word_count,
         tone: 'professional',
         seoFocus: true
@@ -403,7 +413,8 @@ class ScheduleService {
           status: 'publish',
           tags: post.tags,
           categories: [],
-          metaDescription: post.meta_description
+          metaDescription: post.meta_description,
+          featuredImage: undefined // Featured image would be embedded in content already
         }
       )
 
