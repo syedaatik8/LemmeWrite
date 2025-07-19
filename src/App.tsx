@@ -9,6 +9,8 @@ import Dashboard from './components/dashboard/Dashboard'
 import Settings from './components/settings/Settings'
 import PostSchedule from './components/schedule/PostSchedule'
 import Analytics from './components/analytics/Analytics'
+import PaymentSuccess from './components/payment/PaymentSuccess'
+import PaymentCancel from './components/payment/PaymentCancel'
 
 function App() {
   return (
@@ -56,6 +58,18 @@ function App() {
           <Route path="/audience" element={<ProtectedRoute><div className="p-6"><h1>Audience - Coming Soon</h1></div></ProtectedRoute>} />
           <Route path="/campaigns" element={<ProtectedRoute><div className="p-6"><h1>Campaigns - Coming Soon</h1></div></ProtectedRoute>} />
           <Route path="/messages" element={<ProtectedRoute><div className="p-6"><h1>Messages - Coming Soon</h1></div></ProtectedRoute>} />
+          <Route 
+            path="/payment/success" 
+            element={
+              <PaymentSuccess />
+            } 
+          />
+          <Route 
+            path="/payment/cancel" 
+            element={
+              <PaymentCancel />
+            } 
+          />
         </Routes>
       </Router>
     </AuthProvider>

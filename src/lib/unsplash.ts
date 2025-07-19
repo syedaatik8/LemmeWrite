@@ -1,210 +1,393 @@
-// Unsplash API Integration
-// Handles image search and selection for blog featured images
-
-interface UnsplashImage {
-  id: string
+interface UnsplashPhoto {
+  id: string;
   urls: {
-    raw: string
-    full: string
-    regular: string
-    small: string
-    thumb: string
-  }
-  alt_description: string | null
-  description: string | null
+    small: string;
+    regular: string;
+    full: string;
+  };
+  alt_description: string | null;
+  description: string | null;
   user: {
-    name: string
-    username: string
-  }
-  links: {
-    download_location: string
-  }
-  width: number
-  height: number
+    name: string;
+    username: string;
+  };
 }
 
 interface UnsplashSearchResponse {
-  total: number
-  total_pages: number
-  results: UnsplashImage[]
-}
-
-interface ImageSearchResult {
-  id: string
-  url: string
-  altText: string
-  description: string
-  photographer: string
-  downloadLocation: string
-  width: number
-  height: number
+  results: UnsplashPhoto[];
+  total: number;
+  total_pages: number;
 }
 
 class UnsplashService {
-  private accessKey: string
-  private baseUrl = 'https://api.unsplash.com'
+  private apiKey: string;
+  private baseUrl = 'https://api.unsplash.com';
 
   constructor() {
-    this.accessKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY
-    if (!this.accessKey || this.accessKey.trim() === '') {
-      console.error('CRITICAL: Unsplash Access Key is missing!')
-      console.error('Please check your .env file and ensure VITE_UNSPLASH_ACCESS_KEY is set correctly')
-    } else {
-      console.log('Unsplash API Key configured successfully')
+    this.apiKey = import.meta.env.VITE_UNSPLASH_ACCESS_KEY;
+    if (!this.apiKey) {
+      throw new Error('Unsplash access key is required');
     }
   }
 
-  /**
-   * Extract keywords from blog title for image search
-   */
-  extractKeywords(title: string): string[] {
-    // Remove common words and extract meaningful keywords
-    const commonWords = [
-      'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
-      'how', 'what', 'why', 'when', 'where', 'who', 'which', 'that', 'this', 'these', 'those',
-      'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did',
-      'will', 'would', 'could', 'should', 'may', 'might', 'can', 'must', 'shall',
-      'top', 'best', 'guide', 'review', 'comprehensive', 'ultimate', 'complete'
-    ]
+  // Enhanced stop words to filter out problematic terms
+  private stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+    'from', 'up', 'about', 'into', 'through', 'during', 'before', 'after', 'above', 'below',
+    'between', 'among', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had',
+    'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'can',
+    'unlocking', 'power', 'secrets', 'ultimate', 'complete', 'guide', 'how', 'why', 'what',
+    'when', 'where', 'who', 'which', 'that', 'this', 'these', 'those', 'your', 'our', 'their',
+    'future', 'using', 'user', 'people', 'person', 'girl', 'boy', 'man', 'woman'
+  ]);
 
-    // Remove years, numbers, and dates
-    const yearPattern = /\b(19|20)\d{2}\b/g
-    const numberPattern = /\b\d+\b/g
+  // Keyword mapping for better search results
+  private keywordMapping: Record<string, string[]> = {
+    'ai': ['artificial intelligence', 'machine learning', 'technology', 'robots', 'automation'],
+    'saas': ['software', 'technology', 'cloud computing', 'business software', 'dashboard'],
+    'marketing': ['digital marketing', 'business strategy', 'analytics', 'growth', 'advertising', 'branding'],
+    'social': ['social media marketing', 'digital advertising', 'online marketing', 'content strategy'],
+    'media': ['digital media', 'content marketing', 'online advertising', 'digital strategy'],
+    'productivity': ['workspace', 'office', 'business', 'efficiency', 'tools'],
+    'automation': ['technology', 'robots', 'artificial intelligence', 'workflow'],
+    'analytics': ['data visualization', 'charts', 'business intelligence', 'dashboard'],
+    'growth': ['business growth', 'success', 'strategy', 'upward trend'],
+    'startup': ['business', 'entrepreneurship', 'innovation', 'technology'],
+    'innovation': ['technology', 'future', 'creative', 'breakthrough'],
+    'digital': ['technology', 'computer', 'internet', 'online'],
+    'cloud': ['cloud computing', 'technology', 'servers', 'data center'],
+    'mobile': ['smartphone', 'technology', 'app development', 'mobile device'],
+    'security': ['cybersecurity', 'technology', 'protection', 'shield'],
+    'data': ['data visualization', 'analytics', 'database', 'information'],
+    'strategy': ['business strategy', 'planning', 'corporate', 'professional'],
+    'trends': ['business trends', 'market analysis', 'industry insights', 'statistics'],
+    'content': ['content creation', 'digital content', 'creative work', 'publishing'],
+    'engagement': ['audience engagement', 'community building', 'interaction', 'connection'],
+    'brand': ['branding', 'brand identity', 'corporate identity', 'logo design'],
+    'campaign': ['marketing campaign', 'advertising', 'promotion', 'outreach']
+  };
+
+  // Context-based query generation
+  private generateContextualQuery(title: string): string {
+    const lowerTitle = title.toLowerCase();
     
+    // AI/ML context
+    if (lowerTitle.includes('ai') || lowerTitle.includes('artificial') || lowerTitle.includes('machine learning')) {
+      return 'artificial intelligence technology robots';
+    }
+    
+    // SaaS/Software context
+    if (lowerTitle.includes('saas') || lowerTitle.includes('software') || lowerTitle.includes('app')) {
+      return 'software technology business dashboard';
+    }
+    
+    // Social Media Marketing context
+    if (lowerTitle.includes('social media') && lowerTitle.includes('marketing')) {
+      return 'digital marketing business strategy advertising';
+    }
+    
+    // General Marketing context
+    if (lowerTitle.includes('marketing') || lowerTitle.includes('advertising') || lowerTitle.includes('campaign')) {
+      return 'digital marketing business advertising strategy';
+    }
+    
+    // Social Media context (without marketing)
+    if (lowerTitle.includes('social media') || lowerTitle.includes('social')) {
+      return 'social media marketing digital strategy business';
+    }
+    
+    // Data/Analytics context
+    if (lowerTitle.includes('data') || lowerTitle.includes('analytics') || lowerTitle.includes('metrics')) {
+      return 'data visualization analytics dashboard';
+    }
+    
+    // Business/Strategy context
+    if (lowerTitle.includes('business') || lowerTitle.includes('strategy') || lowerTitle.includes('growth')) {
+      return 'business strategy corporate professional';
+    }
+    
+    // Future/Trends context
+    if (lowerTitle.includes('future') || lowerTitle.includes('trends') || lowerTitle.includes('2025') || lowerTitle.includes('2024')) {
+      return 'business trends technology innovation strategy';
+    }
+    
+    // Default tech context
+    return 'technology business innovation';
+  }
+
+  private extractKeywords(title: string): string[] {
+    // Remove common punctuation and split into words
     const words = title
       .toLowerCase()
-      .replace(yearPattern, '') // Remove years like 2024, 2025
-      .replace(numberPattern, '') // Remove standalone numbers
-      .replace(/[^\w\s]/g, '') // Remove punctuation
+      .replace(/[^\w\s]/g, ' ')
       .split(/\s+/)
-      .filter(word => word.length > 2 && !commonWords.includes(word))
-      .slice(0, 4) // Take top 4 keywords for better focus
+      .filter(word => word.length > 2 && !this.stopWords.has(word));
 
-    return words
+    // Expand keywords using mapping
+    const expandedKeywords: string[] = [];
+    
+    words.forEach(word => {
+      if (this.keywordMapping[word]) {
+        expandedKeywords.push(...this.keywordMapping[word]);
+      } else {
+        // Only add if it's a meaningful word (not in stop words)
+        expandedKeywords.push(word);
+      }
+    });
+
+    // Remove duplicates and return top keywords
+    return [...new Set(expandedKeywords)];
   }
 
-  /**
-   * Search for images on Unsplash
-   */
-  async searchImages(query: string, perPage: number = 10): Promise<ImageSearchResult[]> {
-    if (!this.accessKey) {
-      throw new Error('Unsplash Access Key is not configured')
+  private buildSearchQuery(title: string): string {
+    const keywords = this.extractKeywords(title);
+    const contextualQuery = this.generateContextualQuery(title);
+    
+    // If we have good keywords, use top 2 with OR logic
+    if (keywords.length > 0) {
+      const topKeywords = keywords.slice(0, 2);
+      return topKeywords.join(' OR ');
     }
+    
+    // Fallback to contextual query
+    return contextualQuery;
+  }
 
+  async searchPhotos(title: string, perPage: number = 10): Promise<UnsplashPhoto[]> {
     try {
-      console.log('Searching Unsplash for:', query)
+      const query = this.buildSearchQuery(title);
+      console.log(`Searching Unsplash for title: "${title}" with query: "${query}"`);
       
       const response = await fetch(
-        `${this.baseUrl}/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape`,
+        `${this.baseUrl}/search/photos?query=${encodeURIComponent(query)}&per_page=${perPage}&orientation=landscape&content_filter=high`,
         {
           headers: {
-            'Authorization': `Client-ID ${this.accessKey}`,
-            'Accept-Version': 'v1'
-          }
+            'Authorization': `Client-ID ${this.apiKey}`,
+          },
         }
-      )
+      );
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Unsplash API Error:', response.status, errorText)
-        throw new Error(`Unsplash API error: ${response.status} ${response.statusText}`)
+        throw new Error(`Unsplash API error: ${response.status}`);
       }
 
-      const data: UnsplashSearchResponse = await response.json()
-      console.log(`Found ${data.results.length} images for query: ${query}`)
-
-      return data.results.map(image => ({
-        id: image.id,
-        url: image.urls.regular,
-        altText: image.alt_description || image.description || `Photo by ${image.user.name}`,
-        description: image.description || image.alt_description || '',
-        photographer: image.user.name,
-        downloadLocation: image.links.download_location,
-        width: image.width,
-        height: image.height
-      }))
+      const data: UnsplashSearchResponse = await response.json();
+      console.log(`Found ${data.results.length} images for query: "${query}"`);
+      return data.results;
     } catch (error) {
-      console.error('Error searching Unsplash:', error)
-      throw error
+      console.error('Error searching Unsplash photos:', error);
+      return [];
     }
   }
 
-  /**
-   * Find the best image for a blog title
-   */
-  async findBestImageForTitle(title: string): Promise<ImageSearchResult | null> {
+  async getRandomPhoto(query?: string): Promise<UnsplashPhoto | null> {
     try {
-      // Extract keywords from title
-      const keywords = this.extractKeywords(title)
-      console.log('Extracted keywords from title:', keywords)
+      const searchQuery = query || 'technology business';
+      const url = query 
+        ? `${this.baseUrl}/photos/random?query=${encodeURIComponent(searchQuery)}&orientation=landscape`
+        : `${this.baseUrl}/photos/random?orientation=landscape`;
 
-      if (keywords.length === 0) {
-        console.warn('No keywords extracted from title, using generic search')
-        keywords.push('business', 'technology')
-      }
-
-      // Try searching with different keyword combinations
-      const searchQueries = [
-        keywords.join(' '), // All keywords together
-        keywords.slice(0, 3).join(' '), // Top 3 keywords
-        keywords[0], // Primary keyword only
-        'business technology' // Fallback
-      ]
-
-      for (const query of searchQueries) {
-        try {
-          const images = await this.searchImages(query, 5)
-          if (images.length > 0) {
-            // Return the first (most relevant) image
-            const selectedImage = images[0]
-            console.log(`Selected image: ${selectedImage.id} by ${selectedImage.photographer}`)
-            
-            // Track download for Unsplash API requirements
-            await this.trackDownload(selectedImage.downloadLocation)
-            
-            return selectedImage
-          }
-        } catch (error) {
-          console.warn(`Search failed for query "${query}":`, error)
-          continue
-        }
-      }
-
-      console.warn('No images found for any search query')
-      return null
-    } catch (error) {
-      console.error('Error finding best image for title:', error)
-      return null
-    }
-  }
-
-  /**
-   * Track image download (required by Unsplash API)
-   */
-  private async trackDownload(downloadLocation: string): Promise<void> {
-    try {
-      await fetch(downloadLocation, {
+      const response = await fetch(url, {
         headers: {
-          'Authorization': `Client-ID ${this.accessKey}`
-        }
-      })
+          'Authorization': `Client-ID ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Unsplash API error: ${response.status}`);
+      }
+
+      return await response.json();
     } catch (error) {
-      console.warn('Failed to track download:', error)
-      // Don't throw error as this is not critical
+      console.error('Error getting random Unsplash photo:', error);
+      return null;
     }
   }
 
-  /**
-   * Test connection to Unsplash API
-   */
+  async getPhotoById(id: string): Promise<UnsplashPhoto | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/photos/${id}`, {
+        headers: {
+          'Authorization': `Client-ID ${this.apiKey}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Unsplash API error: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error getting Unsplash photo by ID:', error);
+      return null;
+    }
+  }
+
+  async findBestImageForTitle(title: string): Promise<{ id: string; url: string; altText: string; user: { name: string; username: string } } | null> {
+    try {
+      // Try multiple search strategies for better results
+      let photos = await this.searchPhotos(title, 8);
+      
+      if (photos.length === 0) {
+        console.log('No photos found with primary search, trying contextual fallback...');
+        const contextualQuery = this.generateContextualQuery(title);
+        photos = await this.searchPhotos(contextualQuery, 5);
+      }
+      
+      if (photos.length === 0) {
+        console.log('No photos found with contextual search, trying random with context...');
+        const contextualQuery = this.generateContextualQuery(title);
+        const randomPhoto = await this.getRandomPhoto(contextualQuery + ' business professional');
+        
+        if (randomPhoto) {
+          return {
+            id: randomPhoto.id,
+            url: randomPhoto.urls.regular,
+            altText: randomPhoto.alt_description || randomPhoto.description || `Image related to ${title}`,
+            user: randomPhoto.user
+          };
+        }
+        
+        return null;
+      }
+      
+      // Filter out photos that might be too personal/individual focused
+      const filteredPhotos = photos.filter(photo => {
+        const description = (photo.alt_description || photo.description || '').toLowerCase();
+        const personalKeywords = ['person using', 'girl with', 'boy with', 'man with', 'woman with', 'people using', 'individual'];
+        return !personalKeywords.some(keyword => description.includes(keyword));
+      });
+      
+      // Use filtered results if available, otherwise use original
+      const photosToUse = filteredPhotos.length > 0 ? filteredPhotos : photos;
+      const bestPhoto = photosToUse[0];
+      
+      console.log(`Selected image: ${bestPhoto.id} - ${bestPhoto.alt_description || bestPhoto.description}`);
+      
+      return {
+        id: bestPhoto.id,
+        url: bestPhoto.urls.regular,
+        altText: bestPhoto.alt_description || bestPhoto.description || `Image related to ${title}`,
+        user: bestPhoto.user
+      };
+    } catch (error) {
+      console.error('Error finding best image for title:', error);
+      return null;
+    }
+  }
+
+  async findBestImageForKeywords(keywords: string): Promise<{ id: string; url: string; altText: string; user: { name: string; username: string } } | null> {
+    try {
+      console.log(`Searching for image with user-defined keywords: "${keywords}"`);
+      
+      // Clean and process user keywords
+      const cleanKeywords = keywords.trim();
+      if (!cleanKeywords) {
+        return null;
+      }
+      
+      // Try direct search with user keywords first
+      let photos = await this.searchPhotos(cleanKeywords, 8);
+      
+      if (photos.length === 0) {
+        console.log('No photos found with user keywords, trying expanded search...');
+        // Try to expand keywords using our mapping
+        const expandedQuery = this.expandUserKeywords(cleanKeywords);
+        photos = await this.searchPhotos(expandedQuery, 5);
+      }
+      
+      if (photos.length === 0) {
+        console.log('No photos found with expanded keywords, trying random...');
+        const randomPhoto = await this.getRandomPhoto(cleanKeywords + ' business professional');
+        
+        if (randomPhoto) {
+          return {
+            id: randomPhoto.id,
+            url: randomPhoto.urls.regular,
+            altText: randomPhoto.alt_description || randomPhoto.description || `Image related to ${keywords}`,
+            user: randomPhoto.user
+          };
+        }
+        
+        return null;
+      }
+      
+      // Filter out personal/individual focused photos
+      const filteredPhotos = photos.filter(photo => {
+        const description = (photo.alt_description || photo.description || '').toLowerCase();
+        const personalKeywords = ['person using', 'girl with', 'boy with', 'man with', 'woman with', 'people using', 'individual'];
+        return !personalKeywords.some(keyword => description.includes(keyword));
+      });
+      
+      const photosToUse = filteredPhotos.length > 0 ? filteredPhotos : photos;
+      const bestPhoto = photosToUse[0];
+      
+      console.log(`Selected image from user keywords: ${bestPhoto.id} - ${bestPhoto.alt_description || bestPhoto.description}`);
+      
+      return {
+        id: bestPhoto.id,
+        url: bestPhoto.urls.regular,
+        altText: bestPhoto.alt_description || bestPhoto.description || `Image related to ${keywords}`,
+        user: bestPhoto.user
+      };
+    } catch (error) {
+      console.error('Error finding image for user keywords:', error);
+      return null;
+    }
+  }
+
+  private expandUserKeywords(keywords: string): string {
+    const lowerKeywords = keywords.toLowerCase();
+    
+    // Map user keywords to better search terms
+    const keywordExpansions: Record<string, string[]> = {
+      'facebook': ['social media marketing', 'digital advertising', 'social network'],
+      'instagram': ['social media marketing', 'content creation', 'digital marketing'],
+      'twitter': ['social media marketing', 'digital communication', 'online engagement'],
+      'linkedin': ['professional networking', 'business marketing', 'corporate social media'],
+      'tiktok': ['social media marketing', 'video content', 'digital trends'],
+      'youtube': ['video marketing', 'content creation', 'digital media'],
+      'ai': ['artificial intelligence', 'machine learning', 'technology', 'automation'],
+      'marketing': ['digital marketing', 'business strategy', 'advertising', 'branding'],
+      'social media': ['digital marketing', 'online engagement', 'content strategy'],
+      'saas': ['software', 'technology', 'cloud computing', 'business software'],
+      'technology': ['innovation', 'digital transformation', 'tech solutions'],
+      'business': ['corporate', 'professional', 'strategy', 'growth'],
+      'startup': ['entrepreneurship', 'innovation', 'business growth'],
+      'ecommerce': ['online business', 'digital commerce', 'retail technology'],
+      'analytics': ['data visualization', 'business intelligence', 'metrics'],
+      'automation': ['technology', 'efficiency', 'digital tools'],
+      'productivity': ['efficiency', 'business tools', 'workflow'],
+      'growth': ['business growth', 'success', 'strategy', 'scaling']
+    };
+    
+    // Find matching expansions
+    const expandedTerms: string[] = [];
+    
+    Object.keys(keywordExpansions).forEach(key => {
+      if (lowerKeywords.includes(key)) {
+        expandedTerms.push(...keywordExpansions[key]);
+      }
+    });
+    
+    // If we found expansions, use them; otherwise use original keywords
+    if (expandedTerms.length > 0) {
+      return expandedTerms.slice(0, 3).join(' OR ');
+    }
+    
+    return keywords;
+  }
+  getAttributionText(image: { user: { name: string; username: string } }): string {
+    return `Photo by ${image.user.name} (@${image.user.username}) on Unsplash`;
+  }
+
   async testConnection(): Promise<boolean> {
     try {
       console.log('Testing Unsplash connection...')
-      const response = await fetch(`${this.baseUrl}/photos?per_page=1`, {
+      const response = await fetch(`${this.baseUrl}/photos/random`, {
         headers: {
-          'Authorization': `Client-ID ${this.accessKey}`,
-          'Accept-Version': 'v1'
-        }
+          'Authorization': `Client-ID ${this.apiKey}`,
+        },
       })
       console.log('Unsplash connection test result:', response.ok)
       return response.ok
@@ -213,22 +396,6 @@ class UnsplashService {
       return false
     }
   }
-
-  /**
-   * Get image attribution text for Unsplash requirements
-   */
-  getAttributionText(image: ImageSearchResult): string {
-    return `Photo by ${image.photographer} on Unsplash`
-  }
-
-  /**
-   * Generate HTML for image with proper attribution
-   */
-  generateImageHtml(image: ImageSearchResult, title: string): string {
-    const attribution = this.getAttributionText(image)
-    return `<img src="${image.url}" alt="${image.altText || title}" title="${attribution}" style="width: 100%; height: auto; margin: 20px 0;" />`
-  }
 }
 
-export const unsplashService = new UnsplashService()
-export type { ImageSearchResult }
+export const unsplashService = new UnsplashService();

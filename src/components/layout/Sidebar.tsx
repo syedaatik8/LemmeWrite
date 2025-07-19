@@ -1,4 +1,5 @@
 import React from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useLocation } from 'react-router-dom'
 import { 
@@ -8,10 +9,12 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import PricingModal from '../pricing/PricingModal'
 
 const Sidebar: React.FC = () => {
   const location = useLocation()
   const { userPoints } = useAuth()
+  const [showPricing, setShowPricing] = useState(false)
 
   const menuItems = [
     { name: 'Dashboard', icon: Home, path: '/dashboard' },
@@ -107,7 +110,10 @@ const Sidebar: React.FC = () => {
             </div>
             <div className="text-2xl font-bold text-teal-600 mb-1">{userPoints.toLocaleString()}</div>
             <div className="text-xs text-gray-500">Resets monthly</div>
-            <button className="w-full mt-3 bg-teal-600 text-white text-sm py-2 rounded-lg hover:bg-teal-700 transition-colors">
+            <button 
+              onClick={() => setShowPricing(true)}
+              className="w-full mt-3 bg-teal-600 text-white text-sm py-2 rounded-lg hover:bg-teal-700 transition-colors"
+            >
               Upgrade Plan
             </button>
           </div>
@@ -133,6 +139,12 @@ const Sidebar: React.FC = () => {
           ))}
         </nav>
       </div>
+
+      {/* Pricing Modal */}
+      <PricingModal
+        isOpen={showPricing}
+        onClose={() => setShowPricing(false)}
+      />
     </div>
   )
 }

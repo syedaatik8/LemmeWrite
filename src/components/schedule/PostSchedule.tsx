@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { 
   Calendar, Clock, Target, FileText, Zap, 
-  Settings, Save, Plus, Globe, Tag, Hash, CheckCircle
+  Settings, Save, Plus, Globe, Tag, Hash, CheckCircle, X
 } from 'lucide-react'
 import DashboardLayout from '../layout/DashboardLayout'
 import { useAuth } from '../../contexts/AuthContext'
@@ -19,11 +19,18 @@ const PostSchedule: React.FC = () => {
   const [categories, setCategories] = useState('')
   const [keywords, setKeywords] = useState('')
   const [description, setDescription] = useState('')
+  const [imageKeywords, setImageKeywords] = useState('')
+  const [stopCondition, setStopCondition] = useState('points_exhausted')
+  const [stopDate, setStopDate] = useState('')
+  const [maxPosts, setMaxPosts] = useState('')
   const [publishTime, setPublishTime] = useState('09:00')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPostingNow, setIsPostingNow] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+  const clearSuccess = () => setSuccess('')
+  const clearError = () => setError('')
 
   const scheduleTypes = [
     { id: 'topic', name: 'Topic-Based', icon: Target, description: 'Generate posts based on specific topics' },
@@ -87,9 +94,13 @@ const PostSchedule: React.FC = () => {
         schedule_type: scheduleType as 'topic' | 'category' | 'keyword',
         content_input: contentInput,
         description: description || undefined,
+        image_keywords: imageKeywords || undefined,
         frequency: frequency as 'daily' | 'weekly' | 'biweekly' | 'monthly',
         word_count: parseInt(wordCount),
-        publish_time: publishTime
+        publish_time: publishTime,
+        stop_condition: stopCondition as 'never' | 'date' | 'post_count' | 'points_exhausted',
+        stop_date: stopCondition === 'date' ? stopDate : undefined,
+        max_posts: stopCondition === 'post_count' ? parseInt(maxPosts) : undefined
       }
 
       const { data, error: createError } = await scheduleService.createSchedule(scheduleData)
@@ -105,10 +116,8 @@ const PostSchedule: React.FC = () => {
       setCategories('')
       setKeywords('')
       setDescription('')
+      setImageKeywords('')
       setSelectedSite('')
-      
-      // Clear success message after 5 seconds
-      setTimeout(() => setSuccess(''), 5000)
       
       // Reload user points to reflect the new post
       loadUserPoints()
@@ -157,6 +166,7 @@ const PostSchedule: React.FC = () => {
         schedule_type: scheduleType as 'topic' | 'category' | 'keyword',
         content_input: contentInput,
         description: description || undefined,
+        image_keywords: imageKeywords || undefined,
         word_count: parseInt(wordCount)
       }
 
@@ -179,10 +189,8 @@ const PostSchedule: React.FC = () => {
       setCategories('')
       setKeywords('')
       setDescription('')
+      setImageKeywords('')
       setSelectedSite('')
-      
-      // Clear success message after 5 seconds
-      setTimeout(() => setSuccess(''), 5000)
       
       // Reload user points to reflect the new post
       loadUserPoints()
@@ -213,10 +221,18 @@ const PostSchedule: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center space-x-2"
+              className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center justify-between"
             >
-              <CheckCircle className="w-5 h-5" />
-              <span>{success}</span>
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="w-5 h-5" />
+                <span>{success}</span>
+              </div>
+              <button
+                onClick={clearSuccess}
+                className="text-green-500 hover:text-green-700 ml-4"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </motion.div>
           )}
 
@@ -224,9 +240,15 @@ const PostSchedule: React.FC = () => {
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg"
+              className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center justify-between"
             >
-              {error}
+              <span>{error}</span>
+              <button
+                onClick={clearError}
+                className="text-red-500 hover:text-red-700 ml-4"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </motion.div>
           )}
 
@@ -331,6 +353,22 @@ const PostSchedule: React.FC = () => {
                         placeholder="Provide additional context or specific requirements for the content..."
                       />
                     </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Image Keywords (Optional)
+                      </label>
+                      <input
+                        type="text"
+                        value={imageKeywords}
+                        onChange={(e) => setImageKeywords(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-transparent"
+                        placeholder="e.g., facebook, AI, social media, technology, business"
+                      />
+                      <p className="text-sm text-gray-500 mt-1">
+                        Specify keywords for finding relevant featured images. Leave empty to auto-select based on title.
+                      </p>
+                    </div>
                   </div>
                 </motion.div>
 
@@ -411,6 +449,90 @@ const PostSchedule: React.FC = () => {
                         onChange={(e) => setPublishTime(e.target.value)}
                         className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-transparent"
                       />
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Schedule Stopping Options */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.35 }}
+                  className="bg-white rounded-xl shadow-sm p-6"
+                >
+                  <h3 className="text-lg font-semibold text-gray-800 mb-4">When to Stop Posting</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Stop Condition
+                      </label>
+                      <select
+                        value={stopCondition}
+                        onChange={(e) => setStopCondition(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-transparent"
+                      >
+                        <option value="points_exhausted">When points run out (Recommended)</option>
+                        <option value="date">Stop on a specific date</option>
+                        <option value="post_count">After a certain number of posts</option>
+                        <option value="never">Keep posting indefinitely</option>
+                      </select>
+                      <p><strong>Smart Choice:</strong> The schedule will automatically stop when you run out of points. This prevents unexpected charges and gives you control over your spending.</p>
+                    </div>
+
+                    {stopCondition === 'date' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Stop Date
+                        </label>
+                        <input
+                          type="date"
+                          value={stopDate}
+                          onChange={(e) => setStopDate(e.target.value)}
+                          min={new Date().toISOString().split('T')[0]}
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-transparent"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    {stopCondition === 'post_count' && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Maximum Posts
+                        </label>
+                        <input
+                          type="number"
+                          value={maxPosts}
+                          onChange={(e) => setMaxPosts(e.target.value)}
+                          min="1"
+                          max="100"
+                          className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-600 focus:border-transparent"
+                          placeholder="e.g., 10"
+                          required
+                        />
+                      </div>
+                    )}
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <div className="flex items-start space-x-2">
+                        <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-white text-xs">i</span>
+                        </div>
+                        <div className="text-sm text-blue-700">
+                          {stopCondition === 'points_exhausted' && (
+                            <p><strong>Smart Choice:</strong> The schedule will automatically stop when you run out of points. This prevents unexpected charges and gives you control over your spending.</p>
+                          )}
+                          {stopCondition === 'date' && (
+                            <p><strong>Date-based:</strong> Posts will stop being generated after the selected date, even if you have points remaining.</p>
+                          )}
+                          {stopCondition === 'post_count' && (
+                            <p><strong>Post limit:</strong> The schedule will stop after generating the specified number of posts, regardless of points or date.</p>
+                          )}
+                          {stopCondition === 'never' && (
+                            <p><strong>Continuous:</strong> Posts will keep generating as long as you have points. Make sure to monitor your usage!</p>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </motion.div>
