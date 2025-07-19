@@ -235,7 +235,7 @@ class PayPalService {
             payer_selected: 'PAYPAL',
             payee_preferred: 'IMMEDIATE_PAYMENT_REQUIRED'
           },
-          return_url: `${window.location.origin}/payment/success`,
+          return_url: `${window.location.origin}/payment/success?plan=${request.planId}`,
           cancel_url: `${window.location.origin}/payment/cancel`
         }
       }
@@ -321,6 +321,35 @@ class PayPalService {
 
   getAllPlans(): PayPalPlan[] {
     return Object.values(this.plans)
+  }
+
+  getPlanDetailsByPayPalId(paypalPlanId: string): { type: string; points: number; name: string } {
+    // Map PayPal plan IDs to our internal plan structure
+    // First try to find by the actual PayPal plan ID
+    for (const [planKey, plan] of Object.entries(this.plans)) {
+      if (plan.id === paypalPlanId) {
+        const pointsMapping = {
+          'pro': 1250,
+          'business': 3500,
+          'enterprise': 10000
+        }
+        return {
+          type: planKey,
+          points: pointsMapping[planKey] || 1250,
+          name: plan.name
+        }
+      }
+    }
+    
+    // Fallback mapping for known PayPal plan IDs
+    const fallbackMapping: Record<string, { type: string; points: number; name: string }> = {
+      'P-5ML4271244454362WXNWU5NQ': { type: 'pro', points: 1250, name: 'Creator Plan' },
+      'P-1GJ4899448696344MXNWU5NQ': { type: 'business', points: 3500, name: 'Agency Plan' },
+      'P-2RT4271244454362WXNWU5NQ': { type: 'enterprise', points: 10000, name: 'Scale Plan' }
+    }
+    
+    // Find plan by PayPal ID or return default
+    return fallbackMapping[paypalPlanId] || { type: 'pro', points: 1250, name: 'Creator Plan' }
   }
 }
 

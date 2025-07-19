@@ -230,7 +230,7 @@ const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) => {
                     {loading === plan.id ? (
                       <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin mx-auto" />
                     ) : (
-                      plan.price === 0 ? 'Get Started Free' : 'Choose Plan'
+                      plan.price === 0 ? 'Get Started Free' : `Choose ${plan.name}`
                     )}
                   </motion.button>
                 </motion.div>
