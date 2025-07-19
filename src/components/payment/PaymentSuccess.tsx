@@ -4,10 +4,11 @@ import { CheckCircle, ArrowRight, Zap, X, RefreshCw } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../contexts/AuthContext'
+import { paypalService } from '../../lib/paypal'
 
 const PaymentSuccess: React.FC = () => {
   const [searchParams] = useSearchParams()
-  const { user, loadUserPoints } = useAuth()
+  const { user, loadUserPoints, loadConnectedSites } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [subscriptionDetails, setSubscriptionDetails] = useState<any>(null)
@@ -40,12 +41,31 @@ const PaymentSuccess: React.FC = () => {
       
       console.log('Processing payment success for subscription:', subscriptionId)
       
-      // Determine plan type based on subscription (you might need to adjust this logic)
+      // Get subscription details from PayPal to determine the plan
       let planType = 'pro' // Default
       let pointsToAllocate = 1250
+      let planName = 'Creator'
       
-      // You can enhance this by calling PayPal API to get subscription details
-      // For now, we'll default to pro plan
+      try {
+        const subscriptionData = await paypalService.getSubscriptionDetails(subscriptionId)
+        console.log('PayPal subscription data:', subscriptionData)
+        
+        // Map PayPal plan ID to our plan types
+        const planMapping = {
+          'P-5ML4271244454362WXNWU5NQ': { type: 'pro', points: 1250, name: 'Creator' },
+          'P-1GJ4899448696344MXNWU5NQ': { type: 'business', points: 3500, name: 'Agency' },
+          'P-2RT4271244454362WXNWU5NQ': { type: 'enterprise', points: 10000, name: 'Scale' }
+        }
+        
+        const planInfo = planMapping[subscriptionData.plan_id] || { type: 'pro', points: 1250, name: 'Creator' }
+        planType = planInfo.type
+        pointsToAllocate = planInfo.points
+        planName = planInfo.name
+      } catch (paypalError) {
+        console.warn('Could not get PayPal subscription details, using defaults:', paypalError)
+      }
+      
+      console.log('Plan details:', { planType, pointsToAllocate, planName })
       
       // 1. Create/Update subscription record
       const { data: subscriptionData, error: subscriptionError } = await supabase
@@ -56,7 +76,7 @@ const PaymentSuccess: React.FC = () => {
           plan_type: planType,
           status: 'active',
           activated_at: new Date().toISOString(),
-          created_at: new Date().toISOString()
+          updated_at: new Date().toISOString()
         }, {
           onConflict: 'paypal_subscription_id'
         })
@@ -70,11 +90,42 @@ const PaymentSuccess: React.FC = () => {
 
       console.log('Subscription updated:', subscriptionData)
 
-      // 2. Allocate points to user
-      // Points will be allocated by the PayPal webhook automatically
-      // We don't need to do this from the client side due to RLS policies
-      console.log('Points will be allocated by webhook for plan:', planType)
+      // 2. Add points to user's existing balance (don't reset, add to current points)
+      // First get current points
+      const { data: currentPointsData, error: currentPointsError } = await supabase
+        .from('user_points')
+        .select('points_remaining')
+        .eq('user_id', currentUser?.id)
+        .single()
 
+      let currentPoints = 0
+      if (!currentPointsError && currentPointsData) {
+        currentPoints = currentPointsData.points_remaining
+      }
+
+      // Add new plan points to existing points
+      const newTotalPoints = currentPoints + pointsToAllocate
+      console.log('Adding points:', { currentPoints, pointsToAllocate, newTotalPoints })
+
+      const { error: pointsError } = await supabase
+        .from('user_points')
+        .upsert({
+          user_id: currentUser?.id,
+          points_remaining: newTotalPoints,
+          points_total: pointsToAllocate,
+          last_reset: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        })
+
+      if (pointsError) {
+        console.error('Points allocation error:', pointsError)
+        // Don't fail the whole process for points allocation issues
+        console.warn('Failed to allocate points, but subscription is active')
+      } else {
+        console.log('Points added successfully. New total:', newTotalPoints)
+      }
       // 3. Log the payment
       const { error: paymentLogError } = await supabase
         .from('payment_history')
@@ -82,7 +133,7 @@ const PaymentSuccess: React.FC = () => {
           user_id: currentUser?.id,
           paypal_subscription_id: subscriptionId,
           event_type: 'subscription_activated',
-          amount: planType === 'pro' ? 29 : planType === 'business' ? 79 : 199,
+          amount: planType === 'pro' ? 29 : planType === 'business' ? 79 : planType === 'enterprise' ? 199 : 29,
           currency: 'USD',
           created_at: new Date().toISOString()
         })
@@ -92,13 +143,15 @@ const PaymentSuccess: React.FC = () => {
         // Don't fail the whole process for logging issues
       }
 
-      // 4. Refresh user points in context
+      // 4. Refresh user data in context
       await loadUserPoints(currentUser?.id)
+      await loadConnectedSites(currentUser?.id)
 
       setSubscriptionDetails({
         planType,
         points: pointsToAllocate,
-        subscriptionId
+        subscriptionId,
+        planName
       })
 
     } catch (err: any) {
@@ -182,6 +235,7 @@ const PaymentSuccess: React.FC = () => {
         </motion.div>
 
         <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome to {subscriptionDetails?.planType === 'pro' ? 'Creator' : subscriptionDetails?.planType === 'business' ? 'Agency' : 'Scale'} Plan!</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome to {subscriptionDetails?.planName || 'Creator'} Plan!</h1>
         <p className="text-gray-600 mb-6">
           Your subscription is now active and ready to use. 
           Start creating amazing content right away!
@@ -195,7 +249,7 @@ const PaymentSuccess: React.FC = () => {
           <p className="text-3xl font-bold text-teal-600 mb-2">
             {subscriptionDetails?.points?.toLocaleString() || '1,250'} Points
           </p>
-          <p className="text-sm text-teal-700">Ready to generate high-quality blog content</p>
+          <p className="text-sm text-teal-700">Monthly allocation - Ready to generate high-quality blog content</p>
         </div>
 
         <div className="bg-blue-50 rounded-lg p-4 mb-6">

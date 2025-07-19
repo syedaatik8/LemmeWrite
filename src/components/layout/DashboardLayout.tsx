@@ -9,7 +9,7 @@ interface DashboardLayoutProps {
 }
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
-  const { user, signOut } = useAuth()
+  const { user, signOut, userPlan } = useAuth()
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -48,7 +48,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
                 <div className="flex items-center space-x-3">
                   <div className="text-right">
                     <p className="text-sm font-medium text-gray-800">{user?.email}</p>
-                    <p className="text-xs text-gray-500">Free Plan</p>
+                    <p className="text-xs text-gray-500">{userPlan}</p>
                   </div>
                   <motion.button
                     whileHover={{ scale: 1.05 }}
