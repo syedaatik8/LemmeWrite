@@ -319,20 +319,32 @@ async function allocatePointsForSubscription(supabase: any, paypalSubscriptionId
 
   const points = pointsAllocation[subscription.plan_type] || 50
 
-  // Reset user points for the new billing cycle
+  // Get current points first
+  const { data: currentPointsData } = await supabase
+    .from('user_points')
+    .select('points_remaining')
+    .eq('user_id', subscription.user_id)
+    .single()
+
+  const currentPoints = currentPointsData?.points_remaining || 0
+  const newTotalPoints = currentPoints + points
+
+  // Add points to existing balance (don't reset)
   const { error: pointsError } = await supabase
     .from('user_points')
     .upsert({
       user_id: subscription.user_id,
-      points_remaining: points,
-      points_total: points,
+      points_remaining: newTotalPoints,
+      points_total: newTotalPoints,
       last_reset: new Date().toISOString()
+    }, {
+      onConflict: 'user_id'
     })
 
   if (pointsError) {
     console.error('Error allocating points:', pointsError)
   } else {
-    console.log(`Allocated ${points} points to user ${subscription.user_id}`)
+    console.log(`Added ${points} points to user ${subscription.user_id}. New total: ${newTotalPoints}`)
   }
 }
 

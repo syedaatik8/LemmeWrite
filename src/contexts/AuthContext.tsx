@@ -136,38 +136,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('user_points')
         .select('points_remaining, points_total')
         .eq('user_id', targetUserId)
-        .maybeSingle()
+        .single()
 
-      if (pointsError && pointsError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        throw pointsError
-      }
-
-      if (pointsData) {
+      if (!pointsError && pointsData) {
         // User has points record, use it
         setUserPoints(pointsData.points_remaining)
         setPointsLoaded(true)
         return
+      } else if (pointsError && pointsError.code !== 'PGRST116') {
+        // Real error, not just missing record
+        throw pointsError
       }
 
-      // Fallback: Calculate points based on posts created this month (for users without points table entry)
-      console.log('No points record found, calculating from posts...')
-      const now = new Date()
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      
-      const { data: postsData, error } = await supabase
-        .from('scheduled_posts')
-        .select('id, created_at')
-        .eq('user_id', targetUserId)
-        .gte('created_at', startOfMonth.toISOString())
+      // No points record found, create one with default points
+      console.log('No points record found, creating default record...')
+      const { error: createError } = await supabase
+        .from('user_points')
+        .insert({
+          user_id: targetUserId,
+          points_remaining: 50,
+          points_total: 50,
+          last_reset: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
 
-      if (error) throw error
-
-      // Calculate points used (15 points per post)
-      const postsThisMonth = postsData?.length || 0
-      const pointsUsed = postsThisMonth * 15
-      const remainingPoints = Math.max(50 - pointsUsed, 0) // Default to free plan
-      
-      setUserPoints(remainingPoints)
+      if (createError) {
+        console.error('Error creating default points record:', createError)
+        setUserPoints(50) // Fallback to default
+      } else {
+        setUserPoints(50)
+      }
       setPointsLoaded(true)
     } catch (error) {
       console.error('Error loading user points:', error)
@@ -186,6 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      console.log('Loading user plan for user:', targetUserId)
       const { data: subscriptionData, error } = await supabase
         .from('user_subscriptions')
         .select('plan_type, status')
@@ -199,16 +198,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw error
       }
 
+      console.log('Subscription data:', subscriptionData)
+
       if (subscriptionData) {
         // Map plan types to display names
         const planNames = {
           'free': 'Free Plan',
           'pro': 'Creator Plan',
-          'business': 'Agency Plan',
+          'business': 'Agency Plan', 
           'enterprise': 'Scale Plan'
         }
-        setUserPlan(planNames[subscriptionData.plan_type] || 'Free Plan')
+        const planName = planNames[subscriptionData.plan_type] || 'Free Plan'
+        console.log('Setting user plan to:', planName)
+        setUserPlan(planName)
       } else {
+        console.log('No active subscription found, setting to Free Plan')
         setUserPlan('Free Plan')
       }
       
