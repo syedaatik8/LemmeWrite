@@ -136,7 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .from('user_points')
         .select('points_remaining, points_total')
         .eq('user_id', targetUserId)
-        .single()
+        .maybeSingle()
 
       if (pointsError && pointsError.code !== 'PGRST116') { // PGRST116 = no rows returned
         throw pointsError
@@ -193,7 +193,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('status', 'active')
         .order('created_at', { ascending: false })
         .limit(1)
-        .single()
+        .maybeSingle()
 
       if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
         throw error

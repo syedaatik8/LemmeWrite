@@ -126,6 +126,7 @@ const PaymentSuccess: React.FC = () => {
       } else {
         console.log('Points added successfully. New total:', newTotalPoints)
       }
+
       // 3. Log the payment
       const { error: paymentLogError } = await supabase
         .from('payment_history')
@@ -223,7 +224,7 @@ const PaymentSuccess: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center"
+        className="bg-white rounded-2xl shadow-xl p-8 max-w-lg w-full text-center"
       >
         <motion.div
           initial={{ scale: 0 }}
@@ -234,8 +235,9 @@ const PaymentSuccess: React.FC = () => {
           <CheckCircle className="w-12 h-12 text-green-600" />
         </motion.div>
 
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome to {subscriptionDetails?.planType === 'pro' ? 'Creator' : subscriptionDetails?.planType === 'business' ? 'Agency' : 'Scale'} Plan!</h1>
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">Welcome to {subscriptionDetails?.planName || 'Creator'} Plan!</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          Welcome to {subscriptionDetails?.planName || 'Creator'} Plan!
+        </h1>
         <p className="text-gray-600 mb-6">
           Your subscription is now active and ready to use. 
           Start creating amazing content right away!
@@ -249,7 +251,7 @@ const PaymentSuccess: React.FC = () => {
           <p className="text-3xl font-bold text-teal-600 mb-2">
             {subscriptionDetails?.points?.toLocaleString() || '1,250'} Points
           </p>
-          <p className="text-sm text-teal-700">Monthly allocation - Ready to generate high-quality blog content</p>
+          <p className="text-sm text-teal-700">Added to your account - Ready to generate high-quality blog content</p>
         </div>
 
         <div className="bg-blue-50 rounded-lg p-4 mb-6">
@@ -262,18 +264,20 @@ const PaymentSuccess: React.FC = () => {
           </ul>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           <Link
             to="/schedule"
-            className="w-full bg-teal-600 text-white py-3 rounded-lg hover:bg-teal-700 transition-colors flex items-center justify-center space-x-2"
+            className="block w-full bg-teal-600 text-white py-3 px-4 rounded-lg hover:bg-teal-700 transition-colors text-center"
           >
-            <span>Create Your First Schedule</span>
-            <ArrowRight className="w-4 h-4" />
+            <div className="flex items-center justify-center space-x-2">
+              <span>Create Your First Schedule</span>
+              <ArrowRight className="w-4 h-4" />
+            </div>
           </Link>
           
           <Link
             to="/dashboard"
-            className="w-full bg-gray-100 text-gray-800 py-3 rounded-lg hover:bg-gray-200 transition-colors"
+            className="block w-full bg-gray-100 text-gray-800 py-3 px-4 rounded-lg hover:bg-gray-200 transition-colors text-center"
           >
             Go to Dashboard
           </Link>
