@@ -90,24 +90,21 @@ const PaymentSuccess: React.FC = () => {
       // Step 3: Check if points were already allocated by webhook
       console.log('Checking if points were already allocated...')
       
-      // Check if there's a recent payment history entry for this subscription
-      const { data: paymentHistory, error: paymentHistoryError } = await supabase
+      // Check if there's ANY payment history entry for this subscription (not just recent)
+      const { data: existingPayments, error: paymentHistoryError } = await supabase
         .from('payment_history')
         .select('*')
         .eq('user_id', user.id)
         .eq('paypal_subscription_id', subscriptionId)
-        .eq('event_type', 'subscription_activated')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+        .in('event_type', ['subscription_activated', 'payment_completed', 'manual_points_allocation'])
 
       if (paymentHistoryError) {
         console.error('Error checking payment history:', paymentHistoryError)
       }
 
-      // Only add points if webhook hasn't already processed this subscription
-      if (!paymentHistory) {
-        console.log('No webhook processing found, adding points manually...')
+      // Only add points if NO payment processing has happened for this subscription
+      if (!existingPayments || existingPayments.length === 0) {
+        console.log('No previous payment processing found, adding points manually...')
         
         const { data: pointsResult, error: pointsError } = await supabase
           .rpc('add_points_to_user', {
@@ -134,13 +131,13 @@ const PaymentSuccess: React.FC = () => {
           .insert({
             user_id: user.id,
             paypal_subscription_id: subscriptionId,
-            event_type: 'subscription_activated',
+            event_type: 'manual_points_allocation',
             amount: planAmounts[planType] || 29,
             currency: 'USD',
             created_at: new Date().toISOString()
           })
       } else {
-        console.log('Points already allocated by webhook, skipping manual allocation')
+        console.log(`Points already allocated (${existingPayments.length} payment records found), skipping manual allocation`)
       }
 
       // Step 4: Refresh user data in context
