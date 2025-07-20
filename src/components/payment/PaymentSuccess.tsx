@@ -87,45 +87,63 @@ const PaymentSuccess: React.FC = () => {
 
       console.log('Subscription updated:', subscriptionData)
 
-      // Step 3: Handle points allocation using the database function
-      console.log('Adding points to user account...')
+      // Step 3: Check if points were already allocated by webhook
+      console.log('Checking if points were already allocated...')
       
-      const { data: pointsResult, error: pointsError } = await supabase
-        .rpc('add_points_to_user', {
-          target_user_id: user.id,
-          points_to_add: pointsToAllocate
-        })
-
-      if (pointsError) {
-        console.error('Points allocation error:', pointsError)
-        throw new Error('Failed to allocate points: ' + pointsError.message)
-      }
-
-      console.log('Points added successfully. New total:', pointsResult)
-
-      // Step 4: Log the payment
-      const planAmounts = {
-        'pro': 29,
-        'business': 79,
-        'enterprise': 199
-      }
-
-      const { error: paymentLogError } = await supabase
+      // Check if there's a recent payment history entry for this subscription
+      const { data: paymentHistory, error: paymentHistoryError } = await supabase
         .from('payment_history')
-        .insert({
-          user_id: user.id,
-          paypal_subscription_id: subscriptionId,
-          event_type: 'subscription_activated',
-          amount: planAmounts[planType] || 29,
-          currency: 'USD',
-          created_at: new Date().toISOString()
-        })
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('paypal_subscription_id', subscriptionId)
+        .eq('event_type', 'subscription_activated')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
 
-      if (paymentLogError) {
-        console.warn('Failed to log payment:', paymentLogError)
+      if (paymentHistoryError) {
+        console.error('Error checking payment history:', paymentHistoryError)
       }
 
-      // Step 5: Refresh user data in context
+      // Only add points if webhook hasn't already processed this subscription
+      if (!paymentHistory) {
+        console.log('No webhook processing found, adding points manually...')
+        
+        const { data: pointsResult, error: pointsError } = await supabase
+          .rpc('add_points_to_user', {
+            target_user_id: user.id,
+            points_to_add: pointsToAllocate
+          })
+
+        if (pointsError) {
+          console.error('Points allocation error:', pointsError)
+          throw new Error('Failed to allocate points: ' + pointsError.message)
+        }
+
+        console.log('Points added successfully. New total:', pointsResult)
+        
+        // Log the payment manually since webhook didn't process it
+        const planAmounts = {
+          'pro': 29,
+          'business': 79,
+          'enterprise': 199
+        }
+
+        await supabase
+          .from('payment_history')
+          .insert({
+            user_id: user.id,
+            paypal_subscription_id: subscriptionId,
+            event_type: 'subscription_activated',
+            amount: planAmounts[planType] || 29,
+            currency: 'USD',
+            created_at: new Date().toISOString()
+          })
+      } else {
+        console.log('Points already allocated by webhook, skipping manual allocation')
+      }
+
+      // Step 4: Refresh user data in context
       await Promise.all([
         loadUserPoints(user.id),
         loadConnectedSites(user.id),
