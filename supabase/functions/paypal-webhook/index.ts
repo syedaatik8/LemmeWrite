@@ -297,6 +297,8 @@ async function handlePaymentFailed(supabase: any, event: PayPalWebhookEvent) {
 }
 
 async function allocatePointsForSubscription(supabase: any, paypalSubscriptionId: string) {
+  console.log('Starting points allocation for subscription:', paypalSubscriptionId)
+  
   // Get subscription details
   const { data: subscription, error: subError } = await supabase
     .from('user_subscriptions')
@@ -309,6 +311,8 @@ async function allocatePointsForSubscription(supabase: any, paypalSubscriptionId
     return
   }
 
+  console.log('Found subscription for user:', subscription.user_id, 'plan:', subscription.plan_type)
+  
   // Points allocation based on plan
   const pointsAllocation = {
     'free': 50,
@@ -319,32 +323,98 @@ async function allocatePointsForSubscription(supabase: any, paypalSubscriptionId
 
   const points = pointsAllocation[subscription.plan_type] || 50
 
-  // Get current points first
-  const { data: currentPointsData } = await supabase
-    .from('user_points')
-    .select('points_remaining')
-    .eq('user_id', subscription.user_id)
+  // Use atomic allocation function to prevent duplicates
+  const { data: allocationSuccess, error: transactionError } = await supabase.rpc('allocate_points_with_history', {
+    target_user_id: subscription.user_id,
+    points_to_add: points,
+    subscription_id: paypalSubscriptionId,
+    plan_amount: getAmountForPlan(subscription.plan_type)
+  })
+
+  if (transactionError) {
+    console.error('Error in points allocation transaction:', transactionError)
+    return
+  }
+
+  if (allocationSuccess) {
+    console.log(`Successfully allocated ${points} points to user ${subscription.user_id}`)
+  } else {
+    console.log(`Points already allocated for subscription ${paypalSubscriptionId} - duplicate prevented`)
+  }
+}
+
+// Alternative implementation without the RPC function (if the above doesn't work)
+async function allocatePointsForSubscriptionFallback(supabase: any, paypalSubscriptionId: string) {
+  console.log('Starting points allocation for subscription:', paypalSubscriptionId)
+  
+  // Get subscription details
+  const { data: subscription, error: subError } = await supabase
+    .from('user_subscriptions')
+    .select('user_id, plan_type')
+    .eq('paypal_subscription_id', paypalSubscriptionId)
     .single()
 
-  const currentPoints = currentPointsData?.points_remaining || 0
-  const newTotalPoints = currentPoints + points
+  if (subError || !subscription) {
+    console.error('Subscription not found for points allocation:', paypalSubscriptionId)
+    return
+  }
 
-  // Add points to existing balance (don't reset)
-  const { error: pointsError } = await supabase
-    .from('user_points')
-    .upsert({
-      user_id: subscription.user_id,
-      points_remaining: newTotalPoints,
-      points_total: newTotalPoints,
-      last_reset: new Date().toISOString()
-    }, {
-      onConflict: 'user_id'
+  console.log('Found subscription for user:', subscription.user_id, 'plan:', subscription.plan_type)
+  
+  // Check if points were already allocated for this subscription
+  const { data: existingAllocations, error: allocationError } = await supabase
+    .from('payment_history')
+    .select('id, event_type, created_at, amount')
+    .eq('user_id', subscription.user_id)
+    .eq('paypal_subscription_id', paypalSubscriptionId)
+    .in('event_type', ['webhook_points_allocation', 'manual_points_allocation', 'subscription_activated', 'payment_completed'])
+
+  if (allocationError) {
+    console.error('Error checking existing allocation:', allocationError)
+    return
+  }
+
+  if (existingAllocations && existingAllocations.length > 0) {
+    console.log(`Points already allocated for subscription ${paypalSubscriptionId}. Found ${existingAllocations.length} existing records:`, existingAllocations)
+    return
+  }
+
+  console.log('No existing allocations found, proceeding with points allocation')
+  
+  // Points allocation based on plan
+  const pointsAllocation = {
+    'free': 50,
+    'pro': 1250,
+    'business': 3500,
+    'enterprise': 10000
+  }
+
+  const points = pointsAllocation[subscription.plan_type] || 50
+
+  // Use the RPC function to safely add points
+  const { data: newTotal, error: pointsError } = await supabase
+    .rpc('add_points_to_user', {
+      target_user_id: subscription.user_id,
+      points_to_add: points
     })
 
   if (pointsError) {
     console.error('Error allocating points:', pointsError)
+    return
   } else {
-    console.log(`Added ${points} points to user ${subscription.user_id}. New total: ${newTotalPoints}`)
+    console.log(`Added ${points} points to user ${subscription.user_id}. New total: ${newTotal}`)
+    
+    // Log this allocation in payment history to prevent duplicates
+    await supabase
+      .from('payment_history')
+      .insert({
+        user_id: subscription.user_id,
+        paypal_subscription_id: paypalSubscriptionId,
+        event_type: 'webhook_points_allocation',
+        amount: getAmountForPlan(subscription.plan_type),
+        currency: 'USD',
+        created_at: new Date().toISOString()
+      })
   }
 }
 
