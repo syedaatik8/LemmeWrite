@@ -62,6 +62,14 @@ const PaymentSuccess: React.FC = () => {
         }
       }
       
+      // Define plan amounts mapping
+      const planAmounts = {
+        'free': 0,
+        'pro': 29,
+        'business': 79,
+        'enterprise': 199
+      }
+      
       console.log('Plan details:', { planType, pointsToAllocate, planName })
       
       // Step 2: Create/Update subscription record
@@ -90,13 +98,52 @@ const PaymentSuccess: React.FC = () => {
       // Step 3: Check if points were already allocated by webhook
       console.log('Checking if points were already allocated...')
       
-      // Check if there's ANY payment history entry for this subscription (not just recent)
+      // Use the database function to check if allocation already exists
+      const { data: allocationExists, error: checkError } = await supabase
+        .rpc('check_existing_allocation', {
+          target_user_id: user.id,
+          subscription_id: subscriptionId
+        })
+
+      if (checkError) {
+        console.error('Error checking existing allocation:', checkError)
+        throw new Error('Failed to verify allocation status: ' + checkError.message)
+      }
+
+      if (allocationExists) {
+        console.log('Points already allocated by webhook or previous process')
+      } else {
+        console.log('No existing allocation found, proceeding with atomic allocation')
+        
+        // Use atomic allocation function to prevent race conditions
+        const { data: allocationSuccess, error: allocationError } = await supabase
+          .rpc('allocate_points_with_history', {
+            target_user_id: user.id,
+            points_to_add: pointsToAllocate,
+            subscription_id: subscriptionId,
+            plan_amount: planAmounts[planType] || 29
+          })
+
+        if (allocationError) {
+          console.error('Atomic allocation error:', allocationError)
+          throw new Error('Failed to allocate points: ' + allocationError.message)
+        }
+
+        if (allocationSuccess) {
+          console.log('Points successfully allocated atomically')
+        } else {
+          console.log('Points were already allocated by another process (race condition prevented)')
+        }
+      }
+
+      // Remove the old manual allocation code
+      /*
       const { data: existingPayments, error: paymentHistoryError } = await supabase
         .from('payment_history')
         .select('*')
         .eq('user_id', user.id)
         .eq('paypal_subscription_id', subscriptionId)
-        .in('event_type', ['subscription_activated', 'payment_completed', 'manual_points_allocation'])
+        .in('event_type', ['subscription_activated', 'payment_completed', 'manual_points_allocation', 'webhook_points_allocation', 'atomic_allocation'])
 
       if (paymentHistoryError) {
         console.error('Error checking payment history:', paymentHistoryError)
@@ -104,41 +151,10 @@ const PaymentSuccess: React.FC = () => {
 
       // Only add points if NO payment processing has happened for this subscription
       if (!existingPayments || existingPayments.length === 0) {
-        console.log('No previous payment processing found, adding points manually...')
-        
-        const { data: pointsResult, error: pointsError } = await supabase
-          .rpc('add_points_to_user', {
-            target_user_id: user.id,
-            points_to_add: pointsToAllocate
-          })
-
-        if (pointsError) {
-          console.error('Points allocation error:', pointsError)
-          throw new Error('Failed to allocate points: ' + pointsError.message)
-        }
-
-        console.log('Points added successfully. New total:', pointsResult)
-        
-        // Log the payment manually since webhook didn't process it
-        const planAmounts = {
-          'pro': 29,
-          'business': 79,
-          'enterprise': 199
-        }
-
-        await supabase
-          .from('payment_history')
-          .insert({
-            user_id: user.id,
-            paypal_subscription_id: subscriptionId,
-            event_type: 'manual_points_allocation',
-            amount: planAmounts[planType] || 29,
-            currency: 'USD',
-            created_at: new Date().toISOString()
-          })
-      } else {
-        console.log(`Points already allocated (${existingPayments.length} payment records found), skipping manual allocation`)
+        console.log('No previous payment processing found, using atomic allocation...')
+        // ... atomic allocation code here
       }
+      */
 
       // Step 4: Refresh user data in context
       await Promise.all([

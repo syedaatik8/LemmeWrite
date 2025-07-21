@@ -313,12 +313,61 @@ async function allocatePointsForSubscription(supabase: any, paypalSubscriptionId
 
   console.log('Found subscription for user:', subscription.user_id, 'plan:', subscription.plan_type)
   
-  // Check if points were already allocated for this subscription (ANY event type)
+  // Points allocation based on plan
+  const pointsAllocation = {
+    'free': 50,
+    'pro': 1250,
+    'business': 3500,
+    'enterprise': 10000
+  }
+
+  const points = pointsAllocation[subscription.plan_type] || 50
+
+  // Use atomic allocation function to prevent duplicates
+  const { data: allocationSuccess, error: transactionError } = await supabase.rpc('allocate_points_with_history', {
+    target_user_id: subscription.user_id,
+    points_to_add: points,
+    subscription_id: paypalSubscriptionId,
+    plan_amount: getAmountForPlan(subscription.plan_type)
+  })
+
+  if (transactionError) {
+    console.error('Error in points allocation transaction:', transactionError)
+    return
+  }
+
+  if (allocationSuccess) {
+    console.log(`Successfully allocated ${points} points to user ${subscription.user_id}`)
+  } else {
+    console.log(`Points already allocated for subscription ${paypalSubscriptionId} - duplicate prevented`)
+  }
+}
+
+// Alternative implementation without the RPC function (if the above doesn't work)
+async function allocatePointsForSubscriptionFallback(supabase: any, paypalSubscriptionId: string) {
+  console.log('Starting points allocation for subscription:', paypalSubscriptionId)
+  
+  // Get subscription details
+  const { data: subscription, error: subError } = await supabase
+    .from('user_subscriptions')
+    .select('user_id, plan_type')
+    .eq('paypal_subscription_id', paypalSubscriptionId)
+    .single()
+
+  if (subError || !subscription) {
+    console.error('Subscription not found for points allocation:', paypalSubscriptionId)
+    return
+  }
+
+  console.log('Found subscription for user:', subscription.user_id, 'plan:', subscription.plan_type)
+  
+  // Check if points were already allocated for this subscription
   const { data: existingAllocations, error: allocationError } = await supabase
     .from('payment_history')
-    .select('id, event_type, created_at')
+    .select('id, event_type, created_at, amount')
     .eq('user_id', subscription.user_id)
     .eq('paypal_subscription_id', paypalSubscriptionId)
+    .in('event_type', ['webhook_points_allocation', 'manual_points_allocation', 'subscription_activated', 'payment_completed'])
 
   if (allocationError) {
     console.error('Error checking existing allocation:', allocationError)
